@@ -1,64 +1,125 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect } from "react";
+import { BusinessProfile } from "@/lib/types";
+import { getProfile, saveProfile } from "@/lib/storage";
+import ChecklistTab from "@/components/ChecklistTab";
+import ContentGenerator from "@/components/ContentGenerator";
+import SettingsTab from "@/components/SettingsTab";
+
+type Tab = "checklist" | "note" | "gbp" | "llmo" | "settings";
+
+const TABS: { key: Tab; label: string; icon: string }[] = [
+  { key: "checklist", label: "施策リスト", icon: "📋" },
+  { key: "note", label: "note記事", icon: "📝" },
+  { key: "gbp", label: "GBP投稿", icon: "📍" },
+  { key: "llmo", label: "LLMO対策", icon: "🤖" },
+  { key: "settings", label: "設定", icon: "⚙️" },
+];
 
 export default function Home() {
+  const [tab, setTab] = useState<Tab>("checklist");
+  const [profile, setProfile] = useState<BusinessProfile>({
+    name: "", area: "", keywords: [], description: "", category: "整体院", anthropicKey: "",
+  });
+
+  useEffect(() => {
+    const p = getProfile();
+    setProfile(p);
+    if (!p.name) setTab("settings");
+  }, []);
+
+  const handleSaveProfile = (p: BusinessProfile) => {
+    saveProfile(p);
+    setProfile(p);
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50">
+      {/* ヘッダー */}
+      <header className="bg-white shadow-sm border-b border-orange-100">
+        <div className="max-w-5xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-orange-800">
+                MEO勝ち上げくん
+              </h1>
+              <p className="text-sm text-gray-500 mt-0.5">
+                治療院のMEO対策を完全サポート
+              </p>
+            </div>
+            {profile.name && (
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-700">{profile.name}</p>
+                <p className="text-xs text-gray-400">{profile.area} / {profile.category}</p>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </header>
+
+      {/* タブ */}
+      <div className="max-w-5xl mx-auto px-4 pt-4">
+        <div className="flex gap-1 bg-white rounded-lg p-1 shadow-sm overflow-x-auto">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex-1 py-2.5 px-3 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
+                tab === t.key
+                  ? "bg-orange-600 text-white shadow-sm"
+                  : "text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              {t.icon} {t.label}
+            </button>
+          ))}
         </div>
+      </div>
+
+      {/* コンテンツ */}
+      <main className="max-w-5xl mx-auto px-4 py-6">
+        {tab === "checklist" && <ChecklistTab />}
+
+        {tab === "note" && (
+          <ContentGenerator profile={profile} type="note" />
+        )}
+
+        {tab === "gbp" && (
+          <ContentGenerator profile={profile} type="gbp" />
+        )}
+
+        {tab === "llmo" && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-2">LLMO（大規模言語モデル最適化）とは？</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                ChatGPTやGeminiなどのAI検索で「{profile.area || "○○"}でおすすめの{profile.category || "整体院"}は？」と聞かれたときに、
+                あなたの院が回答に含まれるようにする対策です。2026年以降、AI検索の利用は20〜30%に拡大すると予測されています。
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-purple-50 rounded-lg">
+                  <h4 className="font-medium text-purple-800 text-sm mb-1">FAQ生成</h4>
+                  <p className="text-xs text-purple-600">AI検索で引用されやすいQ&A形式のコンテンツを生成</p>
+                </div>
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <h4 className="font-medium text-blue-800 text-sm mb-1">構造化データ</h4>
+                  <p className="text-xs text-blue-600">Schema.org準拠のJSON-LDでAIが理解しやすい情報構造に</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg">
+                  <h4 className="font-medium text-green-800 text-sm mb-1">E-E-A-T強化</h4>
+                  <p className="text-xs text-green-600">経験・専門性・権威性・信頼性をコンテンツに反映</p>
+                </div>
+              </div>
+            </div>
+            <ContentGenerator profile={profile} type="faq" />
+            <ContentGenerator profile={profile} type="structured-data" />
+          </div>
+        )}
+
+        {tab === "settings" && (
+          <SettingsTab profile={profile} onSave={handleSaveProfile} />
+        )}
       </main>
     </div>
   );
