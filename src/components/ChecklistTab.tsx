@@ -13,6 +13,7 @@ const CATEGORY_ICONS: Record<string, string> = {
   "ウェブサイト": "🌐",
   "外部施策": "📣",
   "LLMO対策": "🤖",
+  "WordPress投稿": "📄",
 };
 
 const PRIORITY_STYLES = {
@@ -141,15 +142,15 @@ export default function ChecklistTab() {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span className={`text-sm font-medium ${item.completed ? "line-through text-gray-400" : "text-gray-800"}`}>
                     {item.title}
                   </span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${PRIORITY_STYLES[item.priority]}`}>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${PRIORITY_STYLES[item.priority]}`}>
                     {PRIORITY_LABELS[item.priority]}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500">{item.description}</p>
+                <p className="text-xs text-gray-500 leading-relaxed">{item.description}</p>
               </div>
             </div>
           </div>

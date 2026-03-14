@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, ChangeEvent } from "react";
 import { BusinessProfile } from "@/lib/types";
 
 interface Props {
@@ -35,17 +35,105 @@ const COLOR_PRESETS = [
   { name: "ティール", primary: "#0D9488", secondary: "#99F6E4", text: "#FFFFFF", bg: "#F0FDFA" },
 ];
 
+// ─── 記事タイプ自動判定 ─────────────────────────
+type ArticleType = "comparison" | "explanation" | "decision" | "reassurance" | "improvement";
+
+const ARTICLE_TYPE_LABELS: Record<ArticleType, string> = {
+  comparison: "比較型",
+  explanation: "解説型",
+  decision: "判断型",
+  reassurance: "安心訴求型",
+  improvement: "改善訴求型",
+};
+
+function detectArticleType(keyword: string): ArticleType {
+  const kw = keyword.toLowerCase();
+  if (kw.includes("違い") || kw.includes("比較") || kw.includes("どっち") || kw.includes("vs")) return "comparison";
+  if (kw.includes("判断") || kw.includes("いつ") || kw.includes("受診") || kw.includes("病院")) return "decision";
+  if (kw.includes("不安") || kw.includes("怖い") || kw.includes("大丈夫") || kw.includes("安心")) return "reassurance";
+  if (kw.includes("改善") || kw.includes("治") || kw.includes("ストレッチ") || kw.includes("セルフケア")) return "improvement";
+  return "explanation";
+}
+
+// ─── 症状別自動配色 ─────────────────────────────
+function getAutoColorIndex(symptom: string): number {
+  // 神経系 → ティール(5), 慢性痛 → オレンジ(0), 狭窄症 → レッド(4), 自律神経 → ブルー(1)
+  if (symptom.includes("神経") && !symptom.includes("自律")) return 5; // ティール
+  if (symptom.includes("自律")) return 1; // ブルー (blue+purple accent built into the preset)
+  if (symptom.includes("狭窄")) return 4; // レッド
+  // 慢性痛系
+  if (["腰痛", "肩こり", "膝痛", "首の痛み", "五十肩"].some((s) => symptom.includes(s))) return 0; // オレンジ(amber accent)
+  if (symptom.includes("頭痛")) return 3; // パープル
+  if (symptom.includes("産後") || symptom.includes("骨盤")) return 2; // グリーン
+  if (symptom.includes("ぎっくり")) return 4; // レッド
+  return 0;
+}
+
+// ─── 写真ストレージ ─────────────────────────────
+const PHOTOS_KEY = "meo_gbp_photos";
+
+interface StoredPhoto {
+  id: string;
+  label: string;
+  data: string; // base64
+}
+
+const PHOTO_LABELS = ["先生写真", "院内", "施術", "外観", "スタッフ", "その他"];
+
+function getStoredPhotos(): StoredPhoto[] {
+  if (typeof window === "undefined") return [];
+  const data = localStorage.getItem(PHOTOS_KEY);
+  return data ? JSON.parse(data) : [];
+}
+
+function saveStoredPhotos(photos: StoredPhoto[]) {
+  localStorage.setItem(PHOTOS_KEY, JSON.stringify(photos));
+}
+
 const W = 1200;
 const H = 900;
 
 export default function GbpImageGenerator({ profile }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [template, setTemplate] = useState<TemplateType>("clinic-info");
   const [colorIdx, setColorIdx] = useState(0);
   const [customText, setCustomText] = useState<Record<string, string>>({});
   const [selectedSymptom, setSelectedSymptom] = useState(SYMPTOM_OPTIONS[0]);
 
+  // Photo management
+  const [photos, setPhotos] = useState<StoredPhoto[]>([]);
+  const [newPhotoLabel, setNewPhotoLabel] = useState(PHOTO_LABELS[0]);
+  const [teacherPhotoImg, setTeacherPhotoImg] = useState<HTMLImageElement | null>(null);
+  const [useTeacherPhoto, setUseTeacherPhoto] = useState(false);
+
+  // Article type detection
+  const [detectedType, setDetectedType] = useState<ArticleType>("explanation");
+
   const colors = COLOR_PRESETS[colorIdx];
+
+  // Load photos from localStorage
+  useEffect(() => {
+    setPhotos(getStoredPhotos());
+  }, []);
+
+  // Load teacher photo image when photos change
+  useEffect(() => {
+    const teacherPhoto = photos.find((p) => p.label === "先生写真");
+    if (teacherPhoto) {
+      const img = new Image();
+      img.onload = () => setTeacherPhotoImg(img);
+      img.src = teacherPhoto.data;
+    } else {
+      setTeacherPhotoImg(null);
+      setUseTeacherPhoto(false);
+    }
+  }, [photos]);
+
+  // Detect article type when symptom changes
+  useEffect(() => {
+    setDetectedType(detectArticleType(selectedSymptom));
+  }, [selectedSymptom]);
 
   // Initialize default texts from profile
   useEffect(() => {
@@ -72,6 +160,38 @@ export default function GbpImageGenerator({ profile }: Props) {
     setCustomText((prev) => ({ ...prev, [key]: value }));
   };
 
+  // ─── Photo upload handler ──────────────────────
+  const handlePhotoUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const newPhoto: StoredPhoto = {
+        id: `photo-${Date.now()}`,
+        label: newPhotoLabel,
+        data: reader.result as string,
+      };
+      const updated = [...photos, newPhoto];
+      setPhotos(updated);
+      saveStoredPhotos(updated);
+    };
+    reader.readAsDataURL(file);
+    // Reset file input
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const deletePhoto = (id: string) => {
+    const updated = photos.filter((p) => p.id !== id);
+    setPhotos(updated);
+    saveStoredPhotos(updated);
+  };
+
+  // ─── Auto color selection ─────────────────────
+  const handleAutoColor = () => {
+    const idx = getAutoColorIndex(selectedSymptom);
+    setColorIdx(idx);
+  };
+
   // Helper: draw rounded rect
   const roundRect = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
     ctx.beginPath();
@@ -90,23 +210,25 @@ export default function GbpImageGenerator({ profile }: Props) {
   // Helper: draw multiline text
   const drawMultiline = useCallback((ctx: CanvasRenderingContext2D, text: string, x: number, y: number, lineHeight: number, maxWidth?: number) => {
     const lines = text.split("\n");
-    lines.forEach((line, i) => {
+    let lineIdx = 0;
+    lines.forEach((line) => {
       if (maxWidth) {
-        // Word wrap
         let currentLine = "";
         for (const char of line) {
           const testLine = currentLine + char;
           if (ctx.measureText(testLine).width > maxWidth && currentLine) {
-            ctx.fillText(currentLine, x, y + i * lineHeight);
+            ctx.fillText(currentLine, x, y + lineIdx * lineHeight);
             currentLine = char;
-            i++;
+            lineIdx++;
           } else {
             currentLine = testLine;
           }
         }
-        ctx.fillText(currentLine, x, y + i * lineHeight);
+        ctx.fillText(currentLine, x, y + lineIdx * lineHeight);
+        lineIdx++;
       } else {
-        ctx.fillText(line, x, y + i * lineHeight);
+        ctx.fillText(line, x, y + lineIdx * lineHeight);
+        lineIdx++;
       }
     });
   }, []);
@@ -117,6 +239,38 @@ export default function GbpImageGenerator({ profile }: Props) {
     roundRect(ctx, x, y, w, 4, 2);
     ctx.fill();
   }, [roundRect]);
+
+  // Helper: draw teacher photo with rounded rect clip
+  const drawTeacherPhoto = useCallback((ctx: CanvasRenderingContext2D) => {
+    if (!useTeacherPhoto || !teacherPhotoImg) return;
+    const size = 200;
+    const x = W - size - 60;
+    const y = H / 2 - size / 2;
+    const r = 24;
+
+    ctx.save();
+    // Clip to rounded rectangle
+    roundRect(ctx, x, y, size, size, r);
+    ctx.clip();
+    // Draw image to fill the rounded rect area
+    const imgAspect = teacherPhotoImg.width / teacherPhotoImg.height;
+    let sx = 0, sy = 0, sw = teacherPhotoImg.width, sh = teacherPhotoImg.height;
+    if (imgAspect > 1) {
+      sw = sh;
+      sx = (teacherPhotoImg.width - sw) / 2;
+    } else {
+      sh = sw;
+      sy = (teacherPhotoImg.height - sh) / 2;
+    }
+    ctx.drawImage(teacherPhotoImg, sx, sy, sw, sh, x, y, size, size);
+    ctx.restore();
+
+    // Border
+    ctx.strokeStyle = colors.primary;
+    ctx.lineWidth = 4;
+    roundRect(ctx, x, y, size, size, r);
+    ctx.stroke();
+  }, [useTeacherPhoto, teacherPhotoImg, roundRect, colors]);
 
   const renderCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -164,6 +318,9 @@ export default function GbpImageGenerator({ profile }: Props) {
         break;
     }
 
+    // Teacher photo overlay
+    drawTeacherPhoto(ctx);
+
     // Footer branding
     ctx.fillStyle = c.primary;
     ctx.globalAlpha = 0.15;
@@ -174,7 +331,7 @@ export default function GbpImageGenerator({ profile }: Props) {
     ctx.textAlign = "center";
     ctx.fillText(`${t.clinicName || ""} | ${t.area || ""}`, W / 2, H - 18);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customText, colors, template, selectedSymptom, roundRect, drawMultiline, drawAccent]);
+  }, [customText, colors, template, selectedSymptom, roundRect, drawMultiline, drawAccent, drawTeacherPhoto]);
 
   function drawClinicInfo(ctx: CanvasRenderingContext2D, t: Record<string, string>, c: typeof COLOR_PRESETS[0]) {
     // Header bar
@@ -286,6 +443,14 @@ export default function GbpImageGenerator({ profile }: Props) {
     ctx.font = "bold 22px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(`${t.category || "整体院"}の専門施術`, W / 2, 90);
+
+    // Article type badge
+    ctx.fillStyle = "rgba(0,0,0,0.06)";
+    roundRect(ctx, W / 2 - 60, 115, 120, 28, 14);
+    ctx.fill();
+    ctx.fillStyle = c.primary;
+    ctx.font = "bold 14px sans-serif";
+    ctx.fillText(ARTICLE_TYPE_LABELS[detectedType], W / 2, 134);
 
     // Main symptom
     ctx.fillStyle = c.primary;
@@ -625,6 +790,12 @@ export default function GbpImageGenerator({ profile }: Props) {
                 ))}
               </div>
             </div>
+            {/* Article type detection display */}
+            <div className="bg-gray-50 rounded-lg p-2">
+              <p className="text-xs text-gray-500">
+                記事タイプ自動判定: <span className="font-bold text-gray-700">{ARTICLE_TYPE_LABELS[detectedType]}</span>
+              </p>
+            </div>
             <Field label="院名" value={customText.clinicName} onChange={(v) => setText("clinicName", v)} />
             <Field label="業種" value={customText.category} onChange={(v) => setText("category", v)} />
           </div>
@@ -670,8 +841,77 @@ export default function GbpImageGenerator({ profile }: Props) {
       <div className="bg-white rounded-xl shadow-sm p-6">
         <h2 className="text-lg font-bold text-gray-800 mb-2">🖼️ GBP画像ジェネレーター</h2>
         <p className="text-sm text-gray-600">
-          Googleビジネスプロフィール投稿用の画像を作成・ダウンロードできます（1200×900px）
+          Googleビジネスプロフィール投稿用の画像を作成・ダウンロードできます（1200x900px）
         </p>
+      </div>
+
+      {/* Photo Upload & Storage Section */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <h3 className="text-sm font-bold text-gray-700 mb-3">参考写真のアップロード</h3>
+        <p className="text-xs text-gray-500 mb-3">
+          院長写真・施術風景などをアップロードしておくと、画像生成時にオーバーレイできます。
+        </p>
+
+        {/* Upload form */}
+        <div className="flex items-end gap-3 mb-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">ラベル</label>
+            <select
+              value={newPhotoLabel}
+              onChange={(e) => setNewPhotoLabel(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+            >
+              {PHOTO_LABELS.map((l) => (
+                <option key={l} value={l}>{l}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoUpload}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="px-4 py-2 bg-orange-100 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-200 transition-colors"
+            >
+              + 写真を追加
+            </button>
+          </div>
+        </div>
+
+        {/* Photo grid */}
+        {photos.length > 0 && (
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+            {photos.map((photo) => (
+              <div key={photo.id} className="relative group">
+                <div className="aspect-square rounded-lg overflow-hidden border border-gray-200">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photo.data}
+                    alt={photo.label}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <span className="block text-center text-[10px] text-gray-600 mt-1 font-medium">
+                  {photo.label}
+                </span>
+                <button
+                  onClick={() => deletePhoto(photo.id)}
+                  className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  x
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {photos.length === 0 && (
+          <p className="text-xs text-gray-400 text-center py-4">写真がまだアップロードされていません</p>
+        )}
       </div>
 
       {/* Template selector */}
@@ -702,10 +942,33 @@ export default function GbpImageGenerator({ profile }: Props) {
           <h3 className="text-sm font-bold text-gray-700">テキストを編集</h3>
           {renderEditPanel()}
 
+          {/* Teacher photo overlay toggle */}
+          {teacherPhotoImg && (
+            <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useTeacherPhoto}
+                  onChange={(e) => setUseTeacherPhoto(e.target.checked)}
+                  className="w-4 h-4 text-orange-600 rounded focus:ring-orange-500"
+                />
+                <span className="text-sm font-medium text-gray-700">先生写真を右下に表示</span>
+              </label>
+            </div>
+          )}
+
           {/* Color selector */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-2">カラーテーマ</label>
-            <div className="flex gap-2">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs font-medium text-gray-600">カラーテーマ</label>
+              <button
+                onClick={handleAutoColor}
+                className="px-3 py-1 bg-gradient-to-r from-teal-500 to-blue-500 text-white rounded-full text-xs font-medium hover:from-teal-600 hover:to-blue-600 transition-all"
+              >
+                自動配色
+              </button>
+            </div>
+            <div className="flex gap-2 flex-wrap">
               {COLOR_PRESETS.map((cp, i) => (
                 <button
                   key={cp.name}
@@ -743,7 +1006,7 @@ export default function GbpImageGenerator({ profile }: Props) {
               className="w-full h-auto"
             />
           </div>
-          <p className="text-xs text-gray-400 mt-2 text-center">1200 × 900px（GBP推奨サイズ）</p>
+          <p className="text-xs text-gray-400 mt-2 text-center">1200 x 900px（GBP推奨サイズ）</p>
         </div>
       </div>
     </div>
