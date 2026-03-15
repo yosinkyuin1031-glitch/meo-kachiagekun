@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { ClinicProfile, WordPressSettings } from "@/lib/types";
+import { useState, useEffect } from "react";
+import { ClinicProfile, WordPressSettings, GoogleSettings } from "@/lib/types";
+import { getGoogleSettings, saveGoogleSettings, clearGoogleSettings } from "@/lib/storage";
 
 interface Props {
   clinics: ClinicProfile[];
@@ -261,6 +262,287 @@ export default function SettingsTab({
           </div>
         )}
       </div>
+
+      {/* Google Business Profile連携 */}
+      <GoogleSettingsSection />
+    </div>
+  );
+}
+
+// ─── Google Business Profile設定セクション ──────
+function GoogleSettingsSection() {
+  const [google, setGoogle] = useState<GoogleSettings | null>(null);
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [showSection, setShowSection] = useState(false);
+  const [status, setStatus] = useState<"idle" | "authorizing" | "loading-locations" | "connected" | "error">("idle");
+  const [error, setError] = useState("");
+  const [locations, setLocations] = useState<Array<{ accountId: string; locationId: string; locationName: string; address: string }>>([]);
+  const [checkResult, setCheckResult] = useState<{ valid?: boolean; email?: string; error?: string; accountCount?: number; accountError?: string } | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    const saved = getGoogleSettings();
+    if (saved) {
+      setGoogle(saved);
+      setClientId(saved.clientId || "");
+      setClientSecret(saved.clientSecret || "");
+      if (saved.accessToken && saved.locationId) {
+        setStatus("connected");
+      }
+      setShowSection(true);
+    }
+  }, []);
+
+  const startOAuth = async () => {
+    if (!clientId || !clientSecret) {
+      setError("Client IDとClient Secretを入力してください");
+      return;
+    }
+    // 保存
+    saveGoogleSettings({ clientId, clientSecret });
+    setStatus("authorizing");
+    setError("");
+
+    try {
+      const redirectUri = `${window.location.origin}/google-callback`;
+      const res = await fetch("/api/google/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, redirectUri }),
+      });
+      const data = await res.json();
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    } catch {
+      setError("認証開始に失敗しました");
+      setStatus("error");
+    }
+  };
+
+  const selectLocation = (loc: { accountId: string; locationId: string; locationName: string }) => {
+    if (!google) return;
+    const updated = { ...google, accountId: loc.accountId, locationId: loc.locationId, locationName: loc.locationName };
+    setGoogle(updated);
+    saveGoogleSettings(updated);
+    setStatus("connected");
+    setLocations([]);
+  };
+
+  const disconnect = () => {
+    clearGoogleSettings();
+    setGoogle(null);
+    setClientId("");
+    setClientSecret("");
+    setStatus("idle");
+    setLocations([]);
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-6">
+      <button
+        onClick={() => setShowSection(!showSection)}
+        className="flex items-center justify-between w-full"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">📍</span>
+          <div className="text-left">
+            <h3 className="font-bold text-gray-800 text-lg">GBP自動投稿（Google連携）</h3>
+            <p className="text-xs text-gray-500">
+              Googleビジネスプロフィールに自動で投稿します
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {status === "connected" && (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">連携済</span>
+          )}
+          <svg
+            className={`w-5 h-5 text-gray-400 transition-transform ${showSection ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+
+      {showSection && (
+        <div className="mt-4 space-y-4">
+          {status === "connected" && google?.locationName ? (
+            <div className="space-y-3">
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-green-800">Google連携済み</p>
+                    <p className="text-xs text-green-600 mt-1">ビジネス: {google.locationName}</p>
+                    <p className="text-xs text-gray-500 mt-1">一括生成時にGBPへ自動投稿されます</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        if (!google?.accessToken) return;
+                        setChecking(true);
+                        setCheckResult(null);
+                        try {
+                          // トークン期限切れならリフレッシュ
+                          let token = google.accessToken;
+                          if (google.tokenExpiry && new Date(google.tokenExpiry) < new Date()) {
+                            const refreshRes = await fetch("/api/google/token", {
+                              method: "PUT",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                refreshToken: google.refreshToken,
+                                clientId: google.clientId,
+                                clientSecret: google.clientSecret,
+                              }),
+                            });
+                            const refreshData = await refreshRes.json();
+                            if (refreshRes.ok && refreshData.accessToken) {
+                              token = refreshData.accessToken;
+                              const updated = {
+                                ...google,
+                                accessToken: token,
+                                tokenExpiry: new Date(Date.now() + (refreshData.expiresIn || 3600) * 1000).toISOString(),
+                              };
+                              setGoogle(updated);
+                              saveGoogleSettings(updated);
+                            }
+                          }
+                          const res = await fetch("/api/google/check", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ accessToken: token }),
+                          });
+                          const data = await res.json();
+                          setCheckResult(data);
+                        } catch {
+                          setCheckResult({ valid: false, error: "接続確認に失敗しました" });
+                        } finally {
+                          setChecking(false);
+                        }
+                      }}
+                      disabled={checking}
+                      className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs hover:bg-blue-100 disabled:opacity-50"
+                    >
+                      {checking ? "確認中..." : "接続確認"}
+                    </button>
+                    <button
+                      onClick={disconnect}
+                      className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs hover:bg-red-100"
+                    >
+                      連携解除
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 接続確認結果 */}
+              {checkResult && (
+                <div className={`p-4 rounded-lg border ${checkResult.valid ? "bg-blue-50 border-blue-200" : "bg-red-50 border-red-200"}`}>
+                  {checkResult.valid ? (
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-blue-800">接続OK</p>
+                      {checkResult.email && <p className="text-xs text-blue-600">アカウント: {checkResult.email}</p>}
+                      <p className="text-xs text-blue-600">GBPアカウント数: {checkResult.accountCount ?? 0}</p>
+                      {checkResult.accountError && <p className="text-xs text-orange-600">API注意: {checkResult.accountError}</p>}
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-red-800">接続エラー</p>
+                      <p className="text-xs text-red-600">{checkResult.error}</p>
+                      {checkResult.error?.includes("無効") && (
+                        <p className="text-xs text-red-500 mt-1">トークンが期限切れの可能性があります。連携解除→再連携をお試しください。</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm font-medium text-blue-800 mb-2">設定手順</p>
+                <ol className="text-xs text-blue-700 space-y-1.5 list-decimal list-inside">
+                  <li>Google Cloud Console でプロジェクトを作成</li>
+                  <li>「My Business Business Information API」を有効化</li>
+                  <li>「OAuth同意画面」を設定（外部→テスト→自分のメールを追加）</li>
+                  <li>「認証情報」→「OAuth 2.0 クライアント ID」を作成（Webアプリケーション）</li>
+                  <li>リダイレクトURIに以下を追加（コピーしてそのまま貼り付け）：</li>
+                </ol>
+                <div className="mt-2 mb-2 p-2 bg-white border border-blue-300 rounded-lg">
+                  <code className="text-xs text-blue-800 break-all select-all">
+                    {typeof window !== "undefined" ? window.location.origin + "/google-callback" : "https://your-app.vercel.app/google-callback"}
+                  </code>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(window.location.origin + "/google-callback")}
+                    className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded hover:bg-blue-200"
+                  >
+                    コピー
+                  </button>
+                </div>
+                <ol className="text-xs text-blue-700 space-y-1.5 list-decimal list-inside" start={6}>
+                  <li>Client IDとClient Secretを下に入力</li>
+                </ol>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Client ID</label>
+                  <input
+                    type="text"
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    placeholder="xxxx.apps.googleusercontent.com"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Client Secret</label>
+                  <input
+                    type="password"
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    placeholder="GOCSPX-..."
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <button
+                  onClick={startOAuth}
+                  disabled={status === "authorizing" || status === "loading-locations"}
+                  className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
+                >
+                  {status === "authorizing" ? "認証画面に移動中..." :
+                   status === "loading-locations" ? "ビジネス情報取得中..." :
+                   "Googleアカウントを連携する"}
+                </button>
+              </div>
+
+              {/* ロケーション選択 */}
+              {locations.length > 1 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700">ビジネスを選択してください：</p>
+                  {locations.map((loc) => (
+                    <button
+                      key={loc.locationId}
+                      onClick={() => selectLocation(loc)}
+                      className="w-full p-3 text-left bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                    >
+                      <p className="text-sm font-medium text-gray-800">{loc.locationName}</p>
+                      <p className="text-xs text-gray-500">{loc.address}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {error && (
+                <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -381,7 +663,7 @@ function ClinicEditForm({
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">エリア</label>
           <input type="text" value={area} onChange={(e) => setArea(e.target.value)}
-            placeholder="大阪市住吉区長居"
+            placeholder="例：東京都渋谷区"
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500" />
         </div>
       </div>
@@ -391,13 +673,13 @@ function ClinicEditForm({
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">院長名</label>
           <input type="text" value={ownerName} onChange={(e) => setOwnerName(e.target.value)}
-            placeholder="大口陽平"
+            placeholder="例：山田太郎"
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500" />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">専門分野</label>
           <input type="text" value={specialty} onChange={(e) => setSpecialty(e.target.value)}
-            placeholder="重症な慢性痛・神経痛"
+            placeholder="例：腰痛・肩こり専門"
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500" />
         </div>
       </div>
@@ -420,7 +702,7 @@ function ClinicEditForm({
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">院の説明</label>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
-          placeholder="大阪市住吉区長居で重症な慢性痛・神経痛を専門に行っている整体院"
+          placeholder="例：渋谷区で肩こり・腰痛を専門にしている整体院"
           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500 resize-none" />
       </div>
 

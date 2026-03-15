@@ -73,6 +73,18 @@ export interface GeneratedContent {
   wpPostUrl?: string;
 }
 
+// Google Business Profile API連携
+export interface GoogleSettings {
+  clientId: string;
+  clientSecret: string;
+  accessToken?: string;
+  refreshToken?: string;
+  tokenExpiry?: string;
+  accountId?: string;      // accounts/{id}
+  locationId?: string;     // locations/{id}
+  locationName?: string;   // 表示用のビジネス名
+}
+
 export interface GenerationFeedback {
   id: string;
   contentId: string;

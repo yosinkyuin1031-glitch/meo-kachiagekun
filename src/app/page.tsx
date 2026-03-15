@@ -21,6 +21,7 @@ import SettingsTab from "@/components/SettingsTab";
 import ContentCalendar from "@/components/ContentCalendar";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 
+
 type Tab = "dashboard" | "bulk" | "checklist" | "note" | "gbp" | "gbp-image" | "llmo" | "wordpress" | "history" | "calendar" | "analytics" | "settings";
 
 const TABS: { key: Tab; label: string; icon: string }[] = [

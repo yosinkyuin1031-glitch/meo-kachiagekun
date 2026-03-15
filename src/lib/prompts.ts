@@ -486,6 +486,56 @@ WordPress投稿用HTML形式で出力してください。
 - リンクは<a href="URL">テキスト</a>形式`;
 }
 
+// ─── 一括生成：個別FAQ生成（1質問1投稿用）──────────
+export function faqIndividualListPrompt(profile: BusinessProfile, keyword: string, faqCount: number = 5): string {
+  const htmlLinks = buildUrlLinksForHtml(profile);
+
+  return `あなたは治療院のMEO対策とLLMO（AI検索最適化）の専門家です。
+以下の治療院の「よくある質問」を個別投稿用に生成してください。
+
+【治療院情報】
+- 院名: ${profile.name}
+- エリア: ${profile.area}
+- 業種: ${profile.category}
+- 説明: ${profile.description}${buildOwnerInfo(profile)}
+
+【FAQ条件】
+- 症状キーワード: ${keyword}
+- FAQ数: ちょうど${faqCount}個（多くても少なくてもダメ）
+- 以下の観点からバランスよく選んで含める：
+  1. 症状の原因（「${keyword}の原因は？」）
+  2. 施術内容（「どんな施術？」「何回で変化？」）
+  3. 来院関連（「初めてでも大丈夫？」「予約方法は？」）
+  4. 料金・保険
+  5. 院の特徴（子連れOK・駐車場等）
+  6. 再発予防
+- 各回答はWordPress投稿用HTML形式（150〜300文字）
+- AI検索（ChatGPT・Gemini・Perplexity）で引用されやすい明確で簡潔な回答
+- 地域名「${profile.area}」・症状キーワード「${keyword}」を自然に含める
+${MEDICAL_NG_NOTE}
+
+【各FAQの回答HTML構成】
+- 回答本文は<p>タグで記述
+- 重要ポイントは<strong>で強調
+- 必要に応じて<ul><li>でリスト化
+${htmlLinks ? `- 回答の最後に関連リンクを1〜2個自然に埋め込む（例: <a href="URL">テキスト</a>）\n利用可能なリンク: ${htmlLinks}` : ""}
+
+【出力形式】
+以下のJSON配列形式のみ出力してください。JSON以外の文字は一切不要。
+配列の要素数は必ず${faqCount}個にしてください。
+[
+  {
+    "question": "質問文（自然な日本語で）",
+    "answer": "<p>回答HTML</p>",
+    "seoTitle": "SEOタイトル（32文字以内、質問のキーワードを含む）",
+    "seoDescription": "メタディスクリプション（120文字以内）",
+    "slug": "英語ハイフン区切りのスラッグ",
+    "blogTitle": "この質問を深掘りするブログ記事のタイトル（40文字以内、SEO最適化）",
+    "blogSlug": "ブログ用英語ハイフン区切りスラッグ"
+  }
+]`;
+}
+
 // ─── 一括生成：GBP投稿（ブログURL埋め込み）─────
 export function gbpWithBlogUrlPrompt(profile: BusinessProfile, keyword: string, blogUrl: string): string {
   const urlFooter = buildUrlFooter(profile, blogUrl);

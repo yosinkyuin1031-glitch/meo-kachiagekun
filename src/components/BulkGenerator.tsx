@@ -4,70 +4,79 @@ import { useState } from "react";
 import { BusinessProfile, GeneratedContent } from "@/lib/types";
 import { saveContent, getContents } from "@/lib/storage";
 import {
-  blogPostPrompt,
   blogPostWithFaqPrompt,
-  bulkBlogSeoPrompt,
-  faqWithBlogUrlPrompt,
+  faqIndividualListPrompt,
   gbpWithBlogUrlPrompt,
   noteWithBlogUrlPrompt,
 } from "@/lib/prompts";
 import VoiceInput from "@/components/VoiceInput";
+import { generateGbpImageBase64 } from "@/lib/gbpCanvas";
+import { getGoogleSettings } from "@/lib/storage";
 
 interface Props {
   profile: BusinessProfile;
 }
 
-interface SeoInfo {
-  blogTitle: string;
-  blogSummary: string;
+// 生成オプション
+interface ContentOptions {
+  faq: boolean;
+  blog: boolean;
+  gbp: boolean;
+  gbpImage: boolean;
+  note: boolean;
+}
+
+// 各FAQアイテム（AI生成結果）
+interface FaqItem {
+  question: string;
+  answer: string;
   seoTitle: string;
   seoDescription: string;
-  seoKeywords: string;
-  ogpTitle: string;
-  ogpDescription: string;
   slug: string;
-  faqSeoTitle: string;
-  faqSeoDescription: string;
-  faqOgpTitle: string;
-  faqOgpDescription: string;
-  faqSlug: string;
+  blogTitle: string;
+  blogSlug: string;
+}
+
+// 各FAQ単位の生成結果
+interface FaqSetResult {
+  faq: FaqItem;
+  faqWpPostId?: number;
+  faqWpUrl?: string;
+  blogHtml?: string;
+  blogWpUrl?: string;
+  gbpPost?: string;
+  gbpImageBase64?: string;
+  gbpImageWpUrl?: string;
+  gbpPosted?: boolean;
+  gbpPostError?: string;
+  noteArticle?: string;
 }
 
 interface BulkResult {
-  seoInfo: SeoInfo | null;
-  blogHtml: string;
-  blogWpUrl: string;
-  faqHtml: string;
-  faqWpUrl: string;
-  gbpPost: string;
-  noteArticle: string;
+  sets: FaqSetResult[];
+  overallProgress: string;
 }
-
-type Step = "idle" | "seo" | "faq" | "faq-wp" | "blog" | "blog-wp" | "gbp" | "note" | "done";
-
-const STEP_LABELS: Record<Step, string> = {
-  idle: "",
-  seo: "SEO・OGP情報を生成中...",
-  faq: "FAQ（よくある質問）を生成中...",
-  "faq-wp": "FAQをWordPressに投稿中...",
-  blog: "ブログ記事を生成中...",
-  "blog-wp": "ブログをWordPressに投稿中...",
-  gbp: "GBP投稿文を生成中...",
-  note: "note記事を生成中...",
-  done: "すべて完了！",
-};
-
-const STEPS_ORDER: Step[] = ["seo", "faq", "faq-wp", "blog", "blog-wp", "gbp", "note", "done"];
 
 export default function BulkGenerator({ profile }: Props) {
   const [keyword, setKeyword] = useState("");
   const [additionalInfo, setAdditionalInfo] = useState("");
-  const [currentStep, setCurrentStep] = useState<Step>("idle");
+  const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<BulkResult | null>(null);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
   const [publishMode, setPublishMode] = useState<"draft" | "publish">("draft");
+  const [blogCategory, setBlogCategory] = useState<"symptom" | "blog">("symptom");
+
+  // 生成設定
+  const [faqCount, setFaqCount] = useState(3);
+  const [contentOptions, setContentOptions] = useState<ContentOptions>({
+    faq: true,
+    blog: true,
+    gbp: true,
+    gbpImage: true,
+    note: true,
+  });
 
   const hasWordPress = !!(
     profile.wordpress?.siteUrl &&
@@ -91,7 +100,7 @@ export default function BulkGenerator({ profile }: Props) {
     return data.content as string;
   };
 
-  const postToWordPress = async (title: string, content: string, slug?: string, categorySlug?: string) => {
+  const postToWordPress = async (title: string, content: string, slug?: string, categorySlug?: string, postType?: string) => {
     if (!hasWordPress) return { postUrl: "", postId: 0 };
 
     const res = await fetch("/api/wordpress", {
@@ -106,11 +115,16 @@ export default function BulkGenerator({ profile }: Props) {
         status: publishMode,
         slug,
         categorySlug,
+        postType,
       }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     return { postUrl: data.postUrl as string, postId: data.postId as number };
+  };
+
+  const toggleOption = (key: keyof ContentOptions) => {
+    setContentOptions(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const runBulkGeneration = async () => {
@@ -121,153 +135,266 @@ export default function BulkGenerator({ profile }: Props) {
 
     setError("");
     setResult(null);
+    setIsRunning(true);
 
     const bulkResult: BulkResult = {
-      seoInfo: null,
-      blogHtml: "",
-      blogWpUrl: "",
-      faqHtml: "",
-      faqWpUrl: "",
-      gbpPost: "",
-      noteArticle: "",
+      sets: [],
+      overallProgress: "",
     };
 
     try {
-      // Step 1: SEO・OGP情報を一括生成
-      setCurrentStep("seo");
-      const seoRaw = await callGenerate(bulkBlogSeoPrompt(profile, keyword), "blog-seo");
-      let seoInfo: SeoInfo;
-      try {
-        const jsonMatch = seoRaw.match(/\{[\s\S]*\}/);
-        seoInfo = JSON.parse(jsonMatch ? jsonMatch[0] : seoRaw);
-      } catch {
-        seoInfo = {
-          blogTitle: `【${keyword}の原因と改善法】${profile.area}${profile.name}`,
-          blogSummary: `${profile.area}の${profile.name}が${keyword}の原因・改善方法を解説`,
-          seoTitle: `${keyword}の原因と改善法｜${profile.area}${profile.name}`,
-          seoDescription: `${profile.name}が${keyword}の原因・改善方法を詳しく解説。`,
-          seoKeywords: `${keyword},${profile.area},${profile.category}`,
-          ogpTitle: `${keyword}でお悩みの方へ｜${profile.name}`,
-          ogpDescription: `${keyword}の原因から改善策まで解説`,
-          slug: "symptom-guide",
-          faqSeoTitle: `${keyword}FAQ｜${profile.area}${profile.name}`,
-          faqSeoDescription: `${keyword}のよくある質問`,
-          faqOgpTitle: `${keyword}FAQ｜${profile.name}`,
-          faqOgpDescription: `${keyword}のよくある質問まとめ`,
-          faqSlug: "faq-" + Date.now(),
-        };
-      }
-      bulkResult.seoInfo = seoInfo;
+      // ── Step 1: FAQ一覧を生成 ──
+      bulkResult.overallProgress = "FAQ（よくある質問）を生成中...";
       setResult({ ...bulkResult });
 
-      // Step 2: FAQ（よくある質問）を先に生成（ブログURLは後で追加）
-      setCurrentStep("faq");
-      const faqHtml = await callGenerate(
-        faqWithBlogUrlPrompt(profile, keyword),
+      const faqRaw = await callGenerate(
+        faqIndividualListPrompt(profile, keyword, faqCount),
         "faq"
       );
-      bulkResult.faqHtml = faqHtml;
-      setResult({ ...bulkResult });
-
-      // Step 3: FAQをWordPressに投稿（「よくある質問」カテゴリ）
-      let faqWpPostId = 0;
-      let faqWpUrl = "";
-      if (hasWordPress) {
-        setCurrentStep("faq-wp");
-        const faqWpResult = await postToWordPress(
-          seoInfo.faqSeoTitle || `【${keyword}】よくある質問｜${profile.name}`,
-          faqHtml,
-          seoInfo.faqSlug,
-          "faq"
-        );
-        faqWpUrl = faqWpResult.postUrl;
-        faqWpPostId = faqWpResult.postId;
-        bulkResult.faqWpUrl = faqWpUrl;
+      let faqItems: FaqItem[];
+      try {
+        const jsonMatch = faqRaw.match(/\[[\s\S]*\]/);
+        faqItems = JSON.parse(jsonMatch ? jsonMatch[0] : faqRaw);
+      } catch {
+        faqItems = [{
+          question: `${keyword}の原因は何ですか？`,
+          answer: `<p>${keyword}の原因は様々です。${profile.name}にご相談ください。</p>`,
+          seoTitle: `${keyword}の原因｜${profile.area}${profile.name}`,
+          seoDescription: `${keyword}の原因について${profile.name}が解説します。`,
+          slug: `faq-${keyword}-${Date.now()}`,
+          blogTitle: `【${keyword}の原因と改善法】${profile.area}${profile.name}`,
+          blogSlug: `${keyword}-cause-${Date.now()}`,
+        }];
       }
-      // FAQ履歴を必ず保存（WP有無にかかわらず）
-      saveContent({
-        id: `faq-bulk-${Date.now()}`,
-        type: "faq",
-        title: seoInfo.faqSeoTitle || `【${keyword}】よくある質問`,
-        content: faqHtml,
-        keyword,
-        createdAt: new Date().toISOString(),
-        ...(faqWpPostId ? { wpPostId: faqWpPostId, wpPostUrl: faqWpUrl } : {}),
-      });
+
+      // 指定数に合わせる
+      faqItems = faqItems.slice(0, faqCount);
+
+      // 初期セットを作成
+      bulkResult.sets = faqItems.map(faq => ({ faq }));
       setResult({ ...bulkResult });
 
-      // Step 4: ブログ記事を生成（FAQ内容を参考に）
-      setCurrentStep("blog");
-      const blogHtml = await callGenerate(
-        blogPostWithFaqPrompt(profile, keyword, seoInfo.blogTitle, faqHtml),
-        "blog"
-      );
-      bulkResult.blogHtml = blogHtml;
-      setResult({ ...bulkResult });
+      // ── Step 2: 各FAQに対してコンテンツを展開 ──
+      for (let i = 0; i < faqItems.length; i++) {
+        const faq = faqItems[i];
+        const setResult_i = bulkResult.sets[i];
+        const label = `[${i + 1}/${faqItems.length}]「${faq.question.slice(0, 20)}...」`;
 
-      // Step 5: ブログをWordPressに投稿（「院内ブログ」カテゴリ）
-      let blogUrl = "";
-      let blogWpPostId = 0;
-      if (hasWordPress) {
-        setCurrentStep("blog-wp");
-        const wpResult = await postToWordPress(seoInfo.blogTitle, blogHtml, seoInfo.slug, "blog");
-        blogUrl = wpResult.postUrl;
-        blogWpPostId = wpResult.postId;
-        bulkResult.blogWpUrl = blogUrl;
-      } else {
-        blogUrl = `https://${profile.name.replace(/\s/g, "")}.com/blog/${seoInfo.slug}`;
-        bulkResult.blogWpUrl = blogUrl;
+        // ─ FAQ投稿 ─
+        if (contentOptions.faq) {
+          bulkResult.overallProgress = `${label} FAQをWordPressに投稿中...`;
+          setResult({ ...bulkResult });
+
+          const faqContent = `<div class="faq-item"><h3>${faq.question}</h3>${faq.answer}</div>`;
+
+          if (hasWordPress) {
+            try {
+              const faqWpResult = await postToWordPress(
+                faq.seoTitle || faq.question,
+                faqContent,
+                faq.slug,
+                "faq",
+                "faq"
+              );
+              setResult_i.faqWpPostId = faqWpResult.postId;
+              setResult_i.faqWpUrl = faqWpResult.postUrl;
+            } catch {
+              // 投稿失敗は無視
+            }
+          }
+
+          saveContent({
+            id: `faq-bulk-${Date.now()}-${i}`,
+            type: "faq",
+            title: faq.seoTitle || faq.question,
+            content: faqContent,
+            keyword,
+            createdAt: new Date().toISOString(),
+            ...(setResult_i.faqWpPostId ? { wpPostId: setResult_i.faqWpPostId, wpPostUrl: setResult_i.faqWpUrl } : {}),
+          });
+          setResult({ ...bulkResult });
+        }
+
+        // ─ ブログ記事 ─
+        let blogUrl = "";
+        if (contentOptions.blog) {
+          bulkResult.overallProgress = `${label} ブログ記事を生成中...`;
+          setResult({ ...bulkResult });
+
+          const faqHtmlForBlog = `<div class="faq-item"><h3>${faq.question}</h3>${faq.answer}</div>`;
+          const blogHtml = await callGenerate(
+            blogPostWithFaqPrompt(profile, keyword, faq.blogTitle, faqHtmlForBlog),
+            "blog"
+          );
+          setResult_i.blogHtml = blogHtml;
+
+          // ブログをWordPressに投稿
+          if (hasWordPress) {
+            bulkResult.overallProgress = `${label} ブログをWordPressに投稿中...`;
+            setResult({ ...bulkResult });
+
+            try {
+              const wpResult = await postToWordPress(faq.blogTitle, blogHtml, faq.blogSlug, blogCategory);
+              blogUrl = wpResult.postUrl;
+              setResult_i.blogWpUrl = blogUrl;
+            } catch {
+              // 投稿失敗
+            }
+          } else {
+            blogUrl = `https://${profile.name.replace(/\s/g, "")}.com/blog/${faq.blogSlug}`;
+            setResult_i.blogWpUrl = blogUrl;
+          }
+
+          saveContent({
+            id: `blog-bulk-${Date.now()}-${i}`,
+            type: "blog",
+            title: faq.blogTitle,
+            content: blogHtml,
+            keyword,
+            createdAt: new Date().toISOString(),
+            ...(setResult_i.blogWpUrl && hasWordPress ? { wpPostUrl: setResult_i.blogWpUrl } : {}),
+          });
+          setResult({ ...bulkResult });
+        }
+
+        // ─ GBP投稿 ─
+        if (contentOptions.gbp) {
+          bulkResult.overallProgress = `${label} GBP投稿文を生成中...`;
+          setResult({ ...bulkResult });
+
+          const gbpPost = await callGenerate(
+            gbpWithBlogUrlPrompt(profile, keyword, blogUrl || ""),
+            "gbp"
+          );
+          setResult_i.gbpPost = gbpPost;
+
+          saveContent({
+            id: `gbp-bulk-${Date.now()}-${i}`,
+            type: "gbp",
+            title: `${keyword} Q${i + 1}`,
+            content: gbpPost,
+            keyword,
+            createdAt: new Date().toISOString(),
+          });
+          setResult({ ...bulkResult });
+
+          // GBP画像
+          if (contentOptions.gbpImage) {
+            bulkResult.overallProgress = `${label} GBP画像を生成中...`;
+            setResult({ ...bulkResult });
+
+            const gbpImageBase64 = generateGbpImageBase64({
+              keyword,
+              clinicName: profile.name,
+              area: profile.area,
+              category: profile.category,
+            });
+            setResult_i.gbpImageBase64 = gbpImageBase64;
+
+            // 画像をWPにアップロード
+            let gbpImagePublicUrl = "";
+            if (hasWordPress && gbpImageBase64) {
+              try {
+                const uploadRes = await fetch("/api/wordpress-media", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    siteUrl: profile.wordpress!.siteUrl,
+                    username: profile.wordpress!.username,
+                    appPassword: profile.wordpress!.appPassword,
+                    imageBase64: gbpImageBase64,
+                    filename: `gbp-${keyword}-q${i + 1}-${Date.now()}.png`,
+                  }),
+                });
+                const uploadData = await uploadRes.json();
+                if (uploadRes.ok) {
+                  gbpImagePublicUrl = uploadData.mediaUrl;
+                  setResult_i.gbpImageWpUrl = gbpImagePublicUrl;
+                }
+              } catch {
+                // アップロード失敗は無視
+              }
+            }
+            setResult({ ...bulkResult });
+
+            // GBP自動投稿
+            const googleSettings = getGoogleSettings();
+            if (googleSettings?.accessToken && googleSettings?.locationId) {
+              bulkResult.overallProgress = `${label} GBPに自動投稿中...`;
+              setResult({ ...bulkResult });
+
+              try {
+                let accessToken = googleSettings.accessToken;
+                if (googleSettings.tokenExpiry && new Date(googleSettings.tokenExpiry) < new Date()) {
+                  const refreshRes = await fetch("/api/google/token", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      clientId: googleSettings.clientId,
+                      clientSecret: googleSettings.clientSecret,
+                      refreshToken: googleSettings.refreshToken,
+                    }),
+                  });
+                  const refreshData = await refreshRes.json();
+                  if (refreshRes.ok) {
+                    accessToken = refreshData.accessToken;
+                  }
+                }
+
+                const postRes = await fetch("/api/google/post-gbp", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    accessToken,
+                    locationId: googleSettings.locationId,
+                    summary: gbpPost,
+                    imageUrl: gbpImagePublicUrl || undefined,
+                    linkUrl: profile.urls?.websiteUrl || blogUrl || undefined,
+                  }),
+                });
+                const postData = await postRes.json();
+                if (postRes.ok) {
+                  setResult_i.gbpPosted = true;
+                } else {
+                  setResult_i.gbpPostError = postData.error || "GBP投稿に失敗";
+                }
+              } catch (e) {
+                setResult_i.gbpPostError = e instanceof Error ? e.message : "GBP投稿エラー";
+              }
+              setResult({ ...bulkResult });
+            }
+          }
+        }
+
+        // ─ note記事 ─
+        if (contentOptions.note) {
+          bulkResult.overallProgress = `${label} note記事を生成中...`;
+          setResult({ ...bulkResult });
+
+          const noteArticle = await callGenerate(
+            noteWithBlogUrlPrompt(profile, keyword, blogUrl || ""),
+            "note"
+          );
+          setResult_i.noteArticle = noteArticle;
+
+          saveContent({
+            id: `note-bulk-${Date.now()}-${i}`,
+            type: "note",
+            title: `${keyword} Q${i + 1}`,
+            content: noteArticle,
+            keyword,
+            createdAt: new Date().toISOString(),
+          });
+          setResult({ ...bulkResult });
+        }
       }
-      // ブログ履歴を必ず保存（WP有無にかかわらず）
-      saveContent({
-        id: `blog-bulk-${Date.now()}`,
-        type: "blog",
-        title: seoInfo.blogTitle,
-        content: blogHtml,
-        keyword,
-        createdAt: new Date().toISOString(),
-        ...(blogWpPostId ? { wpPostId: blogWpPostId, wpPostUrl: blogUrl } : {}),
-      });
-      setResult({ ...bulkResult });
 
-      // Step 6: GBP投稿（ブログURL埋め込み）
-      setCurrentStep("gbp");
-      const gbpPost = await callGenerate(
-        gbpWithBlogUrlPrompt(profile, keyword, blogUrl),
-        "gbp"
-      );
-      bulkResult.gbpPost = gbpPost;
-      saveContent({
-        id: `gbp-bulk-${Date.now()}`,
-        type: "gbp",
-        title: keyword,
-        content: gbpPost,
-        keyword,
-        createdAt: new Date().toISOString(),
-      });
+      bulkResult.overallProgress = `すべて完了！（FAQ ${faqItems.length}件 + 関連コンテンツ）`;
       setResult({ ...bulkResult });
-
-      // Step 7: note記事（ブログURL埋め込み・装飾付き）
-      setCurrentStep("note");
-      const noteArticle = await callGenerate(
-        noteWithBlogUrlPrompt(profile, keyword, blogUrl),
-        "note"
-      );
-      bulkResult.noteArticle = noteArticle;
-      saveContent({
-        id: `note-bulk-${Date.now()}`,
-        type: "note",
-        title: keyword,
-        content: noteArticle,
-        keyword,
-        createdAt: new Date().toISOString(),
-      });
-      setResult({ ...bulkResult });
-
-      setCurrentStep("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : "エラーが発生しました");
-      setCurrentStep("idle");
+    } finally {
+      setIsRunning(false);
     }
   };
 
@@ -290,8 +417,21 @@ export default function BulkGenerator({ profile }: Props) {
     ? historyItems
     : historyItems.filter((h) => h.type === historyFilter);
 
-  const currentStepIndex = STEPS_ORDER.indexOf(currentStep);
-  const isRunning = currentStep !== "idle" && currentStep !== "done";
+  // 生成されるコンテンツ数の計算
+  const totalContentCount = faqCount * (
+    (contentOptions.faq ? 1 : 0) +
+    (contentOptions.blog ? 1 : 0) +
+    (contentOptions.gbp ? 1 : 0) +
+    (contentOptions.note ? 1 : 0)
+  );
+
+  const OPTION_ITEMS: { key: keyof ContentOptions; label: string; desc: string; color: string }[] = [
+    { key: "faq", label: "FAQ投稿", desc: "WordPressの「よくある質問」に個別投稿", color: "green" },
+    { key: "blog", label: "ブログ記事", desc: "FAQを深掘りしたブログ記事を生成・投稿", color: "blue" },
+    { key: "gbp", label: "GBP投稿", desc: "Googleマイビジネスの投稿文を生成", color: "red" },
+    { key: "gbpImage", label: "GBP画像", desc: "GBP投稿用の画像を自動生成・自動投稿", color: "red" },
+    { key: "note", label: "note記事", desc: "noteに投稿するマークダウン記事を生成", color: "orange" },
+  ];
 
   return (
     <div className="space-y-6">
@@ -301,14 +441,14 @@ export default function BulkGenerator({ profile }: Props) {
           <div>
             <h2 className="text-xl font-bold mb-2">一括コンテンツ生成</h2>
             <p className="text-sm opacity-90">
-              キーワードを1つ選ぶだけで、FAQ・ブログ・GBP投稿・note記事をすべて一連の流れで生成します。
+              キーワードからFAQを生成し、各FAQに対してブログ・GBP・noteを展開します。
             </p>
           </div>
           <button
             onClick={loadHistory}
             className="flex-shrink-0 bg-white/20 hover:bg-white/30 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
           >
-            {showHistory ? "閉じる" : "📜 生成履歴"}
+            {showHistory ? "閉じる" : "生成履歴"}
           </button>
         </div>
       </div>
@@ -423,27 +563,123 @@ export default function BulkGenerator({ profile }: Props) {
             <p className="text-xs text-gray-400 mt-1">マイクボタンで音声入力できます。入力内容は生成プロンプトに追加されます。</p>
           </div>
 
+          {/* FAQ生成数 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              FAQ生成数
+            </label>
+            <div className="flex gap-2">
+              {[1, 2, 3, 5, 8].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setFaqCount(n)}
+                  disabled={isRunning}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                    faqCount === n
+                      ? "bg-orange-600 text-white shadow-md"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {n}個
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              各FAQに対して選んだコンテンツが展開されます。まずは1〜3個がおすすめです。
+            </p>
+          </div>
+
+          {/* コンテンツ選択チェックリスト */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              生成するコンテンツ
+            </label>
+            <div className="space-y-2">
+              {OPTION_ITEMS.map(({ key, label, desc, color }) => (
+                <label
+                  key={key}
+                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                    contentOptions[key]
+                      ? `border-${color}-300 bg-${color}-50/50`
+                      : "border-gray-200 bg-gray-50/50"
+                  } ${isRunning ? "opacity-60 cursor-not-allowed" : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={contentOptions[key]}
+                    onChange={() => toggleOption(key)}
+                    disabled={isRunning}
+                    className="mt-0.5 w-4 h-4 text-orange-600 rounded focus:ring-orange-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-800">{label}</span>
+                    <p className="text-xs text-gray-500">{desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="mt-2 p-2 bg-orange-50 rounded-lg">
+              <p className="text-xs text-orange-700 font-medium">
+                合計生成数: FAQ {faqCount}個 × 選択コンテンツ = 約{totalContentCount}件のコンテンツ
+              </p>
+            </div>
+          </div>
+
           {hasWordPress && (
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-gray-700">WordPress投稿:</label>
-              <select
-                value={publishMode}
-                onChange={(e) => setPublishMode(e.target.value as "draft" | "publish")}
-                disabled={isRunning}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 outline-none"
-              >
-                <option value="draft">下書き保存</option>
-                <option value="publish">即時公開</option>
-              </select>
-              <span className="text-xs text-green-600">WP連携済み</span>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="text-sm font-medium text-gray-700">WordPress投稿:</label>
+                <select
+                  value={publishMode}
+                  onChange={(e) => setPublishMode(e.target.value as "draft" | "publish")}
+                  disabled={isRunning}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 outline-none"
+                >
+                  <option value="draft">下書き保存</option>
+                  <option value="publish">即時公開</option>
+                </select>
+                <span className="text-xs text-green-600">WP連携済み</span>
+              </div>
+              {contentOptions.blog && (
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-gray-700">ブログカテゴリ:</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBlogCategory("symptom")}
+                      disabled={isRunning}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                        blogCategory === "symptom"
+                          ? "bg-orange-600 text-white"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      症状ブログ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBlogCategory("blog")}
+                      disabled={isRunning}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                        blogCategory === "blog"
+                          ? "bg-orange-600 text-white"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      院内ブログ
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {!hasWordPress && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
               <p className="text-xs text-yellow-700">
-                WordPress未設定のため、コンテンツはコピー用に生成されます（ブログURLはダミーになります）。
-                設定画面でWordPress連携を追加すると、自動投稿＋URL埋め込みが有効になります。
+                WordPress未設定のため、コンテンツはコピー用に生成されます。
+                設定画面でWordPress連携を追加すると、自動投稿が有効になります。
               </p>
             </div>
           )}
@@ -466,181 +702,190 @@ export default function BulkGenerator({ profile }: Props) {
         </div>
       </div>
 
-      {/* 進捗バー */}
-      {currentStep !== "idle" && (
+      {/* 進捗表示 */}
+      {result?.overallProgress && (
         <div className="bg-white rounded-xl shadow-sm p-6">
-          <h3 className="font-bold text-gray-800 mb-4">生成の進捗</h3>
-          <div className="space-y-3">
-            {STEPS_ORDER.map((step, i) => {
-              const isActive = step === currentStep;
-              const isDone = currentStepIndex > i || currentStep === "done";
-              const isPending = currentStepIndex < i && currentStep !== "done";
-
-              // WP未設定の場合、WP投稿ステップをスキップ表示
-              if (!hasWordPress && (step === "blog-wp" || step === "faq-wp")) {
-                return null;
-              }
-
-              return (
-                <div key={step} className="flex items-center gap-3">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                    isDone ? "bg-green-500 text-white"
-                    : isActive ? "bg-orange-500 text-white animate-pulse"
-                    : "bg-gray-200 text-gray-500"
-                  }`}>
-                    {isDone ? (
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    ) : (
-                      i + 1
-                    )}
-                  </div>
-                  <span className={`text-sm ${
-                    isDone ? "text-green-700 font-medium"
-                    : isActive ? "text-orange-700 font-medium"
-                    : isPending ? "text-gray-400" : ""
-                  }`}>
-                    {STEP_LABELS[step]}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="flex items-center gap-3">
+            {isRunning && (
+              <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+            )}
+            <span className={`text-sm font-medium ${isRunning ? "text-orange-700" : "text-green-700"}`}>
+              {result.overallProgress}
+            </span>
           </div>
+          {/* 進捗バー */}
+          {result.sets.length > 0 && (
+            <div className="mt-3">
+              <div className="flex gap-1">
+                {result.sets.map((s, i) => {
+                  const hasSomeContent = s.faqWpUrl || s.blogHtml || s.gbpPost || s.noteArticle;
+                  const isComplete = (
+                    (!contentOptions.faq || s.faqWpUrl || !hasWordPress) &&
+                    (!contentOptions.blog || s.blogHtml) &&
+                    (!contentOptions.gbp || s.gbpPost) &&
+                    (!contentOptions.note || s.noteArticle)
+                  );
+                  return (
+                    <div
+                      key={i}
+                      className={`h-2 flex-1 rounded-full transition-all ${
+                        isComplete ? "bg-green-500"
+                        : hasSomeContent ? "bg-orange-400 animate-pulse"
+                        : "bg-gray-200"
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                FAQ {result.sets.filter(s => s.faqWpUrl || s.blogHtml || s.gbpPost || s.noteArticle).length}/{result.sets.length} 処理中
+              </p>
+            </div>
+          )}
         </div>
       )}
 
       {/* 生成結果 */}
-      {result && (
-        <div className="space-y-4">
+      {result && result.sets.length > 0 && (
+        <div className="space-y-6">
           <h3 className="text-lg font-bold text-gray-800">生成結果</h3>
 
-          {/* SEO情報 */}
-          {result.seoInfo && (
-            <ResultSection
-              title="SEO・OGP情報"
-              icon="🔍"
-              color="purple"
-              expanded={expandedSection === "seo"}
-              onToggle={() => setExpandedSection(expandedSection === "seo" ? null : "seo")}
-              onCopy={() => copySection("seo", JSON.stringify(result.seoInfo, null, 2))}
-              copied={copiedSection === "seo"}
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                <InfoRow label="ブログタイトル" value={result.seoInfo.blogTitle} />
-                <InfoRow label="要約文" value={result.seoInfo.blogSummary} />
-                <InfoRow label="SEOタイトル" value={result.seoInfo.seoTitle} />
-                <InfoRow label="メタディスクリプション" value={result.seoInfo.seoDescription} />
-                <InfoRow label="メタキーワード" value={result.seoInfo.seoKeywords} />
-                <InfoRow label="OGPタイトル" value={result.seoInfo.ogpTitle} />
-                <InfoRow label="OGPディスクリプション" value={result.seoInfo.ogpDescription} />
-                <InfoRow label="スラッグ" value={result.seoInfo.slug} />
-                <div className="col-span-full border-t pt-2 mt-1">
-                  <p className="text-xs text-gray-400 font-medium mb-1">FAQ用SEO</p>
+          {result.sets.map((setItem, setIndex) => (
+            <div key={setIndex} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              {/* FAQ セットヘッダー */}
+              <div className="bg-gradient-to-r from-green-50 to-blue-50 px-5 py-4 border-b border-gray-200">
+                <div className="flex items-center gap-2">
+                  <span className="bg-green-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+                    Q{setIndex + 1}
+                  </span>
+                  <h4 className="text-sm font-bold text-gray-800">{setItem.faq.question}</h4>
                 </div>
-                <InfoRow label="FAQ SEOタイトル" value={result.seoInfo.faqSeoTitle} />
-                <InfoRow label="FAQ メタディスクリプション" value={result.seoInfo.faqSeoDescription} />
-                <InfoRow label="FAQ OGPタイトル" value={result.seoInfo.faqOgpTitle} />
-                <InfoRow label="FAQ OGPディスクリプション" value={result.seoInfo.faqOgpDescription} />
-              </div>
-            </ResultSection>
-          )}
-
-          {/* ブログ記事 */}
-          {result.blogHtml && (
-            <ResultSection
-              title="ブログ記事（WordPress）"
-              icon="📄"
-              color="blue"
-              expanded={expandedSection === "blog"}
-              onToggle={() => setExpandedSection(expandedSection === "blog" ? null : "blog")}
-              onCopy={() => copySection("blog", result.blogHtml)}
-              copied={copiedSection === "blog"}
-              wpUrl={result.blogWpUrl}
-            >
-              <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed max-h-[400px] overflow-y-auto">
-                {result.blogHtml}
-              </pre>
-            </ResultSection>
-          )}
-
-          {/* FAQ */}
-          {result.faqHtml && (
-            <ResultSection
-              title="FAQ（よくある質問）"
-              icon="❓"
-              color="green"
-              expanded={expandedSection === "faq"}
-              onToggle={() => setExpandedSection(expandedSection === "faq" ? null : "faq")}
-              onCopy={() => copySection("faq", result.faqHtml)}
-              copied={copiedSection === "faq"}
-              wpUrl={result.faqWpUrl}
-            >
-              <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed max-h-[400px] overflow-y-auto">
-                {result.faqHtml}
-              </pre>
-            </ResultSection>
-          )}
-
-          {/* GBP投稿 */}
-          {result.gbpPost && (
-            <ResultSection
-              title="GBP投稿（Googleマイビジネス）"
-              icon="📍"
-              color="red"
-              expanded={expandedSection === "gbp"}
-              onToggle={() => setExpandedSection(expandedSection === "gbp" ? null : "gbp")}
-              onCopy={() => copySection("gbp", result.gbpPost)}
-              copied={copiedSection === "gbp"}
-            >
-              {/* アイキャッチ画像エリア */}
-              <div className="mb-4 p-4 border-2 border-dashed border-red-300 rounded-lg bg-red-50/50">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-lg">🖼️</span>
-                  <span className="text-sm font-medium text-red-700">アイキャッチ画像</span>
-                  <span className="text-xs text-red-500">（GBP投稿に必要）</span>
-                </div>
-                <p className="text-xs text-gray-500 mb-2">
-                  Googleマイビジネスの「最新情報」投稿には画像が必要です。
-                  以下の画像を用意してGBP管理画面で投稿時に添付してください。
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
-                  <div className="flex items-center gap-1.5 bg-white rounded p-2 border border-red-100">
-                    <span>📏</span> 推奨サイズ: 1200×900px（4:3）
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-white rounded p-2 border border-red-100">
-                    <span>📷</span> 施術風景・院内写真・症状イメージ
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-white rounded p-2 border border-red-100">
-                    <span>📝</span> キーワード「{keyword}」に関連する画像
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-white rounded p-2 border border-red-100">
-                    <span>⚠️</span> 患者の顔が写らないよう注意
-                  </div>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {setItem.faqWpUrl && (
+                    <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full">FAQ投稿済</span>
+                  )}
+                  {setItem.blogHtml && (
+                    <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">ブログ生成済</span>
+                  )}
+                  {setItem.gbpPost && (
+                    <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full">GBP生成済</span>
+                  )}
+                  {setItem.noteArticle && (
+                    <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">note生成済</span>
+                  )}
                 </div>
               </div>
-              <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
-                {result.gbpPost}
-              </pre>
-            </ResultSection>
-          )}
 
-          {/* note記事 */}
-          {result.noteArticle && (
-            <ResultSection
-              title="note記事（装飾・図解付き）"
-              icon="📝"
-              color="orange"
-              expanded={expandedSection === "note"}
-              onToggle={() => setExpandedSection(expandedSection === "note" ? null : "note")}
-              onCopy={() => copySection("note", result.noteArticle)}
-              copied={copiedSection === "note"}
-            >
-              <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed max-h-[400px] overflow-y-auto">
-                {result.noteArticle}
-              </pre>
-            </ResultSection>
-          )}
+              <div className="p-5 space-y-4">
+                {/* FAQ回答 */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-green-700">FAQ回答</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => copySection(`faq-${setIndex}`, setItem.faq.answer.replace(/<[^>]*>/g, ""))}
+                        className={`text-xs px-2 py-1 rounded ${copiedSection === `faq-${setIndex}` ? "bg-green-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                      >
+                        {copiedSection === `faq-${setIndex}` ? "コピー済" : "コピー"}
+                      </button>
+                      {setItem.faqWpUrl && (
+                        <a href={setItem.faqWpUrl} target="_blank" rel="noopener noreferrer" className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200">
+                          WPで見る
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <div
+                    className="text-sm text-gray-600 leading-relaxed bg-green-50/50 rounded-lg p-3"
+                    dangerouslySetInnerHTML={{ __html: setItem.faq.answer }}
+                  />
+                  <div className="mt-1 text-xs text-gray-400">
+                    SEO: {setItem.faq.seoTitle} | slug: {setItem.faq.slug}
+                  </div>
+                </div>
+
+                {/* ブログ記事 */}
+                {setItem.blogHtml && (
+                  <ResultAccordion
+                    title={`ブログ: ${setItem.faq.blogTitle}`}
+                    color="blue"
+                    expanded={expandedSection === `blog-${setIndex}`}
+                    onToggle={() => setExpandedSection(expandedSection === `blog-${setIndex}` ? null : `blog-${setIndex}`)}
+                    onCopy={() => copySection(`blog-${setIndex}`, setItem.blogHtml!)}
+                    copied={copiedSection === `blog-${setIndex}`}
+                    wpUrl={setItem.blogWpUrl}
+                  >
+                    <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed max-h-[300px] overflow-y-auto">
+                      {setItem.blogHtml}
+                    </pre>
+                  </ResultAccordion>
+                )}
+
+                {/* GBP投稿 */}
+                {setItem.gbpPost && (
+                  <ResultAccordion
+                    title="GBP投稿（Googleマイビジネス）"
+                    color="red"
+                    expanded={expandedSection === `gbp-${setIndex}`}
+                    onToggle={() => setExpandedSection(expandedSection === `gbp-${setIndex}` ? null : `gbp-${setIndex}`)}
+                    onCopy={() => copySection(`gbp-${setIndex}`, setItem.gbpPost!)}
+                    copied={copiedSection === `gbp-${setIndex}`}
+                  >
+                    {setItem.gbpImageBase64 && (
+                      <div className="mb-3 p-3 bg-red-50/50 rounded-lg border border-red-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-medium text-red-700">自動生成画像</span>
+                          <div className="flex gap-2">
+                            {setItem.gbpImageWpUrl && (
+                              <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full">WPアップロード済</span>
+                            )}
+                            <a
+                              href={setItem.gbpImageBase64}
+                              download={`gbp-${keyword}-q${setIndex + 1}.png`}
+                              className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200"
+                            >
+                              DL
+                            </a>
+                          </div>
+                        </div>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={setItem.gbpImageBase64} alt="GBP画像" className="w-full max-w-md rounded border border-red-200" />
+                      </div>
+                    )}
+                    {setItem.gbpPosted && (
+                      <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700 font-medium">
+                        GBPに自動投稿しました
+                      </div>
+                    )}
+                    {setItem.gbpPostError && (
+                      <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
+                        {setItem.gbpPostError}
+                      </div>
+                    )}
+                    <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+                      {setItem.gbpPost}
+                    </pre>
+                  </ResultAccordion>
+                )}
+
+                {/* note記事 */}
+                {setItem.noteArticle && (
+                  <ResultAccordion
+                    title="note記事"
+                    color="orange"
+                    expanded={expandedSection === `note-${setIndex}`}
+                    onToggle={() => setExpandedSection(expandedSection === `note-${setIndex}` ? null : `note-${setIndex}`)}
+                    onCopy={() => copySection(`note-${setIndex}`, setItem.noteArticle!)}
+                    copied={copiedSection === `note-${setIndex}`}
+                  >
+                    <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed max-h-[300px] overflow-y-auto">
+                      {setItem.noteArticle}
+                    </pre>
+                  </ResultAccordion>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -649,11 +894,10 @@ export default function BulkGenerator({ profile }: Props) {
 
 // ─── サブコンポーネント ──────────────────────────
 
-function ResultSection({
-  title, icon, color, expanded, onToggle, onCopy, copied, wpUrl, children,
+function ResultAccordion({
+  title, color, expanded, onToggle, onCopy, copied, wpUrl, children,
 }: {
   title: string;
-  icon: string;
   color: string;
   expanded: boolean;
   onToggle: () => void;
@@ -662,78 +906,58 @@ function ResultSection({
   wpUrl?: string;
   children: React.ReactNode;
 }) {
-  const colorMap: Record<string, string> = {
-    purple: "border-purple-200 bg-purple-50",
-    blue: "border-blue-200 bg-blue-50",
-    green: "border-green-200 bg-green-50",
-    red: "border-red-200 bg-red-50",
-    orange: "border-orange-200 bg-orange-50",
+  const colorStyles: Record<string, { bg: string; text: string; border: string }> = {
+    blue: { bg: "bg-blue-50", text: "text-blue-800", border: "border-blue-200" },
+    green: { bg: "bg-green-50", text: "text-green-800", border: "border-green-200" },
+    red: { bg: "bg-red-50", text: "text-red-800", border: "border-red-200" },
+    orange: { bg: "bg-orange-50", text: "text-orange-800", border: "border-orange-200" },
   };
-  const headerColor: Record<string, string> = {
-    purple: "text-purple-800",
-    blue: "text-blue-800",
-    green: "text-green-800",
-    red: "text-red-800",
-    orange: "text-orange-800",
-  };
+  const cs = colorStyles[color] || colorStyles.blue;
 
   return (
-    <div className={`bg-white rounded-xl shadow-sm border overflow-hidden ${expanded ? "" : ""}`}>
+    <div className={`rounded-lg border ${cs.border} overflow-hidden`}>
       <button
         onClick={onToggle}
-        className={`w-full flex items-center justify-between px-5 py-4 ${colorMap[color]} transition-colors`}
+        className={`w-full flex items-center justify-between px-4 py-3 ${cs.bg} transition-colors text-left`}
       >
+        <span className={`font-medium text-xs ${cs.text}`}>{title}</span>
         <div className="flex items-center gap-2">
-          <span className="text-lg">{icon}</span>
-          <span className={`font-bold text-sm ${headerColor[color]}`}>{title}</span>
           {wpUrl && (
-            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-              WP投稿済
-            </span>
+            <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full">WP投稿済</span>
           )}
+          <svg
+            className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
         </div>
-        <svg
-          className={`w-5 h-5 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
       </button>
-
       {expanded && (
-        <div className="p-5">
+        <div className="p-4">
           <div className="flex items-center gap-2 mb-3">
             <button
               onClick={onCopy}
-              className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`px-3 py-1 rounded text-xs font-medium transition-all ${
                 copied ? "bg-green-500 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
-              {copied ? "コピー完了" : "コピー"}
+              {copied ? "コピー済" : "コピー"}
             </button>
             {wpUrl && (
               <a
                 href={wpUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200"
+                className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200"
               >
-                WordPress記事を見る →
+                WordPress記事を見る
               </a>
             )}
           </div>
-          <div className="bg-gray-50 rounded-lg p-4">{children}</div>
+          <div className="bg-gray-50 rounded-lg p-3">{children}</div>
         </div>
       )}
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-white rounded-lg p-2 border border-gray-100">
-      <p className="text-xs text-gray-400 mb-0.5">{label}</p>
-      <p className="text-sm text-gray-800 font-medium">{value}</p>
     </div>
   );
 }

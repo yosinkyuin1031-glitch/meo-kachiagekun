@@ -210,6 +210,25 @@ export function saveFeedback(feedback: GenerationFeedback) {
   localStorage.setItem(FEEDBACK_KEY, JSON.stringify([feedback, ...existing]));
 }
 
+// ─── Google Business Profile 設定 ───────────────
+import { GoogleSettings } from "./types";
+
+const GOOGLE_KEY = "meo_google_settings";
+
+export function getGoogleSettings(): GoogleSettings | null {
+  if (typeof window === "undefined") return null;
+  const data = localStorage.getItem(GOOGLE_KEY);
+  return data ? JSON.parse(data) : null;
+}
+
+export function saveGoogleSettings(settings: GoogleSettings) {
+  localStorage.setItem(GOOGLE_KEY, JSON.stringify(settings));
+}
+
+export function clearGoogleSettings() {
+  localStorage.removeItem(GOOGLE_KEY);
+}
+
 // ─── デフォルトチェックリスト ────────────────────
 function getDefaultChecklist(): ChecklistItem[] {
   return [
