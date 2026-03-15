@@ -155,12 +155,13 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ valid: true, model, source: resolvedKey === apiKey?.trim() ? "user" : "server" });
       } catch (e) {
         const msg = e instanceof Error ? e.message.toLowerCase() : "";
-        if (msg.includes("authentication") || msg.includes("api_key") || msg.includes("invalid")) {
+        if (msg.includes("authentication") || msg.includes("invalid x-api-key") || msg.includes("invalid api key")) {
           return NextResponse.json({ valid: false, error: "APIキーが無効です" }, { status: 401 });
         }
         if (msg.includes("credit") || msg.includes("billing")) {
           return NextResponse.json({ valid: false, error: "クレジット不足です" }, { status: 402 });
         }
+        // モデルが見つからない等のエラーは次のモデルを試す
         continue;
       }
     }
