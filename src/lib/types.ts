@@ -32,9 +32,10 @@ export interface ClinicProfile {
   area: string;
   keywords: string[];
   description: string;
-  category: string;
+  category: string;           // 後方互換（表示用に結合した文字列）
+  categories?: string[];      // 複数業種チェック（例: ["整体院", "鍼灸院"]）
   ownerName?: string;         // 院長名
-  specialty?: string;         // 専門分野（例: 重症な慢性痛・神経痛）
+  specialty?: string;         // 専門分野（例: 腰痛・肩こり専門）
   urls?: ClinicUrls;
   wordpress?: WordPressSettings;
 }

@@ -559,11 +559,27 @@ function ClinicEditForm({
 }) {
   const [name, setName] = useState(clinic?.name || "");
   const [area, setArea] = useState(clinic?.area || "");
-  const [category, setCategory] = useState(clinic?.category || "整体院");
+  // 複数業種チェック（後方互換: 旧categoryから移行）
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    clinic?.categories?.length ? clinic.categories
+    : clinic?.category ? [clinic.category]
+    : []
+  );
   const [description, setDescription] = useState(clinic?.description || "");
   const [ownerName, setOwnerName] = useState(clinic?.ownerName || "");
   const [specialty, setSpecialty] = useState(clinic?.specialty || "");
   const [keywordsText, setKeywordsText] = useState(clinic?.keywords.join("\n") || "");
+
+  const CATEGORY_OPTIONS = [
+    "整体院", "鍼灸院", "整骨院", "接骨院",
+    "カイロプラクティック", "マッサージ", "リラクゼーション", "美容整体",
+  ];
+
+  const toggleCategory = (cat: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
+  };
 
   // URL設定
   const [websiteUrl, setWebsiteUrl] = useState(clinic?.urls?.websiteUrl || "");
@@ -604,7 +620,10 @@ function ClinicEditForm({
         ? { siteUrl: wpSiteUrl, username: wpUsername, appPassword: wpAppPassword }
         : undefined;
 
-    onSave({ name, area, category, description, ownerName, specialty, keywords, urls, wordpress });
+    const categories = selectedCategories.length > 0 ? selectedCategories : ["整体院"];
+    const category = categories.join("・");
+
+    onSave({ name, area, category, categories, description, ownerName, specialty, keywords, urls, wordpress });
   };
 
   const testWordPress = async () => {
@@ -684,18 +703,31 @@ function ClinicEditForm({
         </div>
       </div>
 
-      {/* 業種 */}
+      {/* 業種（複数選択） */}
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">業種</label>
-        <select value={category} onChange={(e) => setCategory(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500">
-          <option value="整体院">整体院</option>
-          <option value="鍼灸院">鍼灸院</option>
-          <option value="整骨院">整骨院</option>
-          <option value="接骨院">接骨院</option>
-          <option value="カイロプラクティック">カイロプラクティック</option>
-          <option value="マッサージ">マッサージ</option>
-        </select>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          業種（複数選択可）
+          {selectedCategories.length > 0 && (
+            <span className="text-orange-600 ml-1">{selectedCategories.join("・")}</span>
+          )}
+        </label>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {CATEGORY_OPTIONS.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => toggleCategory(cat)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
+                selectedCategories.includes(cat)
+                  ? "bg-orange-600 text-white border-orange-600"
+                  : "bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:bg-orange-50"
+              }`}
+            >
+              {selectedCategories.includes(cat) && "✓ "}{cat}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 mt-1">例：「鍼灸院」と「整骨院」を選択 → 鍼灸整骨院</p>
       </div>
 
       {/* 説明 */}
@@ -709,14 +741,26 @@ function ClinicEditForm({
       {/* キーワード */}
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">
-          キーワード（1行1つ）
+          MEOキーワード（1行1つ）
           <span className="text-gray-400 ml-1">
             {keywordsText.split("\n").filter((k) => k.trim()).length}個
           </span>
         </label>
-        <textarea value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)} rows={4}
-          placeholder={"腰痛\n肩こり\n頭痛\n骨盤矯正\n神経痛"}
+        <p className="text-xs text-gray-500 mb-2">
+          Googleマップで順位を上げたい「エリア＋症状」のキーワードを入力してください。
+        </p>
+        <textarea value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)} rows={6}
+          placeholder={"渋谷区 腰痛\n渋谷 肩こり\n渋谷区 整体\n恵比寿 骨盤矯正\n渋谷 頭痛\n渋谷区 猫背矯正"}
           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-orange-500 resize-none" />
+        <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <p className="text-xs font-medium text-amber-800 mb-1">キーワードの入れ方のコツ</p>
+          <ul className="text-xs text-amber-700 space-y-0.5 list-disc list-inside">
+            <li>「エリア名＋症状」の組み合わせが基本（例：渋谷区 腰痛）</li>
+            <li>エリアは区名・駅名・地域名など複数パターンで入れると効果的</li>
+            <li>症状だけ（腰痛）やエリアだけ（渋谷 整体）もOK</li>
+            <li>MEOチェッカーで実際に順位を確認しながら調整しましょう</li>
+          </ul>
+        </div>
       </div>
 
       {/* URL設定（折りたたみ） */}
