@@ -557,6 +557,7 @@ function ClinicEditForm({
   onSave: (data: Partial<ClinicProfile>) => void;
   onCancel: () => void;
 }) {
+  const [copiedKw, setCopiedKw] = useState<string | null>(null);
   const [name, setName] = useState(clinic?.name || "");
   const [area, setArea] = useState(clinic?.area || "");
   // 複数業種チェック（後方互換: 旧categoryから移行）
@@ -752,12 +753,62 @@ function ClinicEditForm({
         <textarea value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)} rows={6}
           placeholder={"渋谷区 腰痛\n渋谷 肩こり\n渋谷区 整体\n恵比寿 骨盤矯正\n渋谷 頭痛\n渋谷区 猫背矯正"}
           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-orange-500 resize-none" />
+        {/* キーワード候補 */}
+        {area && (
+          <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+            <p className="text-xs font-medium text-orange-800 mb-2">おすすめキーワード候補（タップでコピー or 追加）</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(() => {
+                const areaName = area.replace(/[都道府県市区町村].*$/, '') || area;
+                const symptoms = ["整体", "腰痛", "坐骨神経痛", "脊柱管狭窄症", "神経痛", "しびれ", "自律神経", "頭痛"];
+                const candidates = symptoms.map(s => `${areaName} ${s}`);
+                return candidates.map((kw) => {
+                  const isAdded = keywordsText.split("\n").some(k => k.trim() === kw);
+                  return (
+                    <div key={kw} className="flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(kw);
+                          setCopiedKw(kw);
+                          setTimeout(() => setCopiedKw(null), 1500);
+                        }}
+                        className={`px-2 py-1 rounded text-xs transition-all ${
+                          copiedKw === kw
+                            ? "bg-green-500 text-white"
+                            : "bg-white text-gray-700 border border-gray-200 hover:border-orange-300"
+                        }`}
+                      >
+                        {copiedKw === kw ? "コピー済" : kw}
+                      </button>
+                      {!isAdded && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setKeywordsText(prev => prev.trim() ? prev.trim() + "\n" + kw : kw);
+                          }}
+                          className="px-1.5 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700"
+                          title="キーワード欄に追加"
+                        >
+                          +
+                        </button>
+                      )}
+                      {isAdded && (
+                        <span className="text-xs text-green-600 px-1">✓</span>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        )}
         <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <p className="text-xs font-medium text-amber-800 mb-1">キーワードの入れ方のコツ</p>
           <ul className="text-xs text-amber-700 space-y-0.5 list-disc list-inside">
-            <li>「エリア名＋症状」の組み合わせが基本（例：渋谷区 腰痛）</li>
+            <li>「エリア名＋症状」の組み合わせが基本（例：長居 腰痛）</li>
             <li>エリアは区名・駅名・地域名など複数パターンで入れると効果的</li>
-            <li>症状だけ（腰痛）やエリアだけ（渋谷 整体）もOK</li>
+            <li>症状だけ（腰痛）やエリアだけ（長居 整体）もOK</li>
             <li>MEOチェッカーで実際に順位を確認しながら調整しましょう</li>
           </ul>
         </div>
