@@ -229,6 +229,33 @@ export function clearGoogleSettings() {
   localStorage.removeItem(GOOGLE_KEY);
 }
 
+// ─── MEOランキング履歴 ──────────────────────────
+import { RankingHistory } from "./ranking-types";
+
+const RANKING_HISTORY_KEY = "meo_ranking_history";
+const SERPAPI_KEY = "meo_serpapi_key";
+
+export function getRankingHistory(): RankingHistory[] {
+  if (typeof window === "undefined") return [];
+  const data = localStorage.getItem(RANKING_HISTORY_KEY);
+  return data ? JSON.parse(data) : [];
+}
+
+export function addRankingHistory(entries: RankingHistory[]) {
+  const existing = getRankingHistory();
+  const combined = [...existing, ...entries];
+  localStorage.setItem(RANKING_HISTORY_KEY, JSON.stringify(combined));
+}
+
+export function getSerpApiKey(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(SERPAPI_KEY) || "";
+}
+
+export function saveSerpApiKey(key: string) {
+  localStorage.setItem(SERPAPI_KEY, key);
+}
+
 // ─── デフォルトチェックリスト ────────────────────
 function getDefaultChecklist(): ChecklistItem[] {
   return [

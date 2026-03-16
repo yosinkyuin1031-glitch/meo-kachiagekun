@@ -20,13 +20,15 @@ import GbpImageGenerator from "@/components/GbpImageGenerator";
 import SettingsTab from "@/components/SettingsTab";
 import ContentCalendar from "@/components/ContentCalendar";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
+import RankingChecker from "@/components/RankingChecker";
 
 
-type Tab = "dashboard" | "bulk" | "checklist" | "note" | "gbp" | "gbp-image" | "llmo" | "wordpress" | "history" | "calendar" | "analytics" | "settings";
+type Tab = "dashboard" | "bulk" | "ranking" | "checklist" | "note" | "gbp" | "gbp-image" | "llmo" | "wordpress" | "history" | "calendar" | "analytics" | "settings";
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: "dashboard", label: "概要", icon: "📊" },
   { key: "bulk", label: "一括生成", icon: "⚡" },
+  { key: "ranking", label: "順位チェック", icon: "🔍" },
   { key: "checklist", label: "施策リスト", icon: "📋" },
   { key: "note", label: "note記事", icon: "📝" },
   { key: "gbp", label: "GBP投稿", icon: "📍" },
@@ -239,6 +241,8 @@ export default function Home() {
         )}
 
         {tab === "bulk" && <BulkGenerator profile={profile} />}
+
+        {tab === "ranking" && <RankingChecker profile={profile} />}
 
         {tab === "checklist" && <ChecklistTab />}
 
