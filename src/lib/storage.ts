@@ -108,6 +108,8 @@ export function getBusinessProfile(): BusinessProfile {
     anthropicKey: settings.anthropicKey,
     ownerName: clinic.ownerName,
     specialty: clinic.specialty,
+    noteProfile: clinic.noteProfile,
+    noteLogin: clinic.noteLogin,
     urls: clinic.urls,
     wordpress: clinic.wordpress,
   };
@@ -254,6 +256,37 @@ export function getSerpApiKey(): string {
 
 export function saveSerpApiKey(key: string) {
   localStorage.setItem(SERPAPI_KEY, key);
+}
+
+// ─── タスク管理 ──────────────────────────────
+import { Task } from "./types";
+
+const TASKS_KEY = "meo_tasks";
+
+export function getTasks(): Task[] {
+  if (typeof window === "undefined") return [];
+  const data = localStorage.getItem(TASKS_KEY);
+  return data ? JSON.parse(data) : [];
+}
+
+export function saveTasks(tasks: Task[]) {
+  localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+}
+
+export function addTask(task: Task) {
+  const tasks = getTasks();
+  saveTasks([task, ...tasks]);
+}
+
+export function updateTask(id: string, updates: Partial<Task>) {
+  const tasks = getTasks();
+  const updated = tasks.map((t) => (t.id === id ? { ...t, ...updates } : t));
+  saveTasks(updated);
+}
+
+export function deleteTask(id: string) {
+  const tasks = getTasks().filter((t) => t.id !== id);
+  saveTasks(tasks);
 }
 
 // ─── デフォルトチェックリスト ────────────────────

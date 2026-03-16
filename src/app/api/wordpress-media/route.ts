@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+export const preferredRegion = "hnd1";
+
 /**
  * WordPressメディアライブラリに画像をアップロード
  * base64画像 → WordPress media → 公開URLを返す

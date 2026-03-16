@@ -16,6 +16,57 @@ interface KeywordResult {
   topThree: { rank: number; name: string; rating?: number; reviews?: number }[];
 }
 
+/**
+ * 店舗名の正規化（マッチング用）
+ * スペース・全半角・記号の違いを吸収する
+ */
+function normalizeName(name: string): string {
+  return name
+    // 全角スペース→半角スペース→除去
+    .replace(/[\s\u3000]/g, "")
+    // 全角英数→半角
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (c) =>
+      String.fromCharCode(c.charCodeAt(0) - 0xFEE0)
+    )
+    // 全角カタカナ→ひらがな
+    .replace(/[\u30A1-\u30F6]/g, (c) =>
+      String.fromCharCode(c.charCodeAt(0) - 0x60)
+    )
+    // 小文字化
+    .toLowerCase()
+    // よくある記号を除去
+    .replace(/[・\-−–ー()（）「」【】]/g, "");
+}
+
+/**
+ * 店舗名が一致するかを柔軟に判定
+ * 1. 完全一致（正規化後）
+ * 2. 部分一致（どちらかがもう一方を含む）
+ * 3. 主要部分の一致（「院」「店」等の接尾辞を除いた比較）
+ */
+function matchesBusinessName(resultTitle: string, searchName: string): boolean {
+  const normResult = normalizeName(resultTitle);
+  const normSearch = normalizeName(searchName);
+
+  // 完全一致
+  if (normResult === normSearch) return true;
+
+  // 部分一致（双方向）
+  if (normResult.includes(normSearch) || normSearch.includes(normResult)) return true;
+
+  // 接尾辞除去で比較（「院」「店」「整体」「整骨」「鍼灸」等を除外）
+  const suffixes = ["院", "店", "整体", "整骨院", "鍼灸院", "接骨院", "治療院", "クリニック"];
+  let coreResult = normResult;
+  let coreSearch = normSearch;
+  for (const suffix of suffixes) {
+    if (coreResult.endsWith(suffix)) coreResult = coreResult.slice(0, -suffix.length);
+    if (coreSearch.endsWith(suffix)) coreSearch = coreSearch.slice(0, -suffix.length);
+  }
+  if (coreResult && coreSearch && (coreResult.includes(coreSearch) || coreSearch.includes(coreResult))) return true;
+
+  return false;
+}
+
 async function searchWithSerpApi(query: string, apiKey: string): Promise<PlaceResult[]> {
   const params = new URLSearchParams({
     engine: "google_maps",
@@ -32,7 +83,20 @@ async function searchWithSerpApi(query: string, apiKey: string): Promise<PlaceRe
   }
 
   const data = await response.json();
-  const results = data.local_results || [];
+
+  // local_results が無い場合、place_results（単一結果）をチェック
+  let results = data.local_results || [];
+
+  // place_results（検索結果が1件の場合にこちらに入ることがある）
+  if (results.length === 0 && data.place_results) {
+    const pr = data.place_results;
+    results = [{
+      title: pr.title || "",
+      address: pr.address,
+      rating: pr.rating,
+      reviews: pr.reviews,
+    }];
+  }
 
   return results.map((r: { title?: string; address?: string; rating?: number; reviews?: number }) => ({
     title: r.title || "",
@@ -63,14 +127,15 @@ export async function POST(request: NextRequest) {
     const results: KeywordResult[] = [];
 
     for (const keyword of keywords as string[]) {
-      const query = `${area} ${keyword}`;
+      // キーワードにエリア名が含まれていればそのまま、なければエリア名を付加
+      const query = keyword;
 
       try {
         const places = await searchWithSerpApi(query, apiKey);
 
         let rank: number | null = null;
         for (let i = 0; i < places.length; i++) {
-          if (places[i].title && places[i].title.includes(businessName)) {
+          if (places[i].title && matchesBusinessName(places[i].title, businessName)) {
             rank = i + 1;
             break;
           }

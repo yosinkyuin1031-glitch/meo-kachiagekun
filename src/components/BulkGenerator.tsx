@@ -37,13 +37,25 @@ interface FaqItem {
   blogSlug: string;
 }
 
+interface SeoData {
+  seoTitle?: string;
+  seoDescription?: string;
+  metaKeywords?: string;
+  ogpTitle?: string;
+  ogpDescription?: string;
+}
+
 // 各FAQ単位の生成結果
 interface FaqSetResult {
   faq: FaqItem;
   faqWpPostId?: number;
   faqWpUrl?: string;
+  faqWpPostType?: string; // "faq-custom" | "faq-xmlrpc" | "faq-admin" | "post"(フォールバック)
+  faqWpError?: string;
   blogHtml?: string;
   blogWpUrl?: string;
+  blogWpError?: string;
+  blogSeoData?: SeoData;
   gbpPost?: string;
   gbpImageBase64?: string;
   gbpImageWpUrl?: string;
@@ -100,7 +112,7 @@ export default function BulkGenerator({ profile }: Props) {
     return data.content as string;
   };
 
-  const postToWordPress = async (title: string, content: string, slug?: string, categorySlug?: string, postType?: string) => {
+  const postToWordPress = async (title: string, content: string, slug?: string, categorySlug?: string, postType?: string, seo?: SeoData) => {
     if (!hasWordPress) return { postUrl: "", postId: 0 };
 
     const res = await fetch("/api/wordpress", {
@@ -116,11 +128,12 @@ export default function BulkGenerator({ profile }: Props) {
         slug,
         categorySlug,
         postType,
+        ...(seo ? { seo } : {}),
       }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    return { postUrl: data.postUrl as string, postId: data.postId as number };
+    return { postUrl: data.postUrl as string, postId: data.postId as number, postType: (data.postType || "post") as string };
   };
 
   const toggleOption = (key: keyof ContentOptions) => {
@@ -189,17 +202,26 @@ export default function BulkGenerator({ profile }: Props) {
 
           if (hasWordPress) {
             try {
+              const faqSeo: SeoData = {
+                seoTitle: faq.seoTitle,
+                seoDescription: faq.seoDescription,
+                metaKeywords: `${keyword},${profile.area},${profile.name}`,
+                ogpTitle: faq.seoTitle,
+                ogpDescription: faq.seoDescription,
+              };
               const faqWpResult = await postToWordPress(
                 faq.seoTitle || faq.question,
                 faqContent,
                 faq.slug,
                 "faq",
-                "faq"
+                "faq",
+                faqSeo
               );
               setResult_i.faqWpPostId = faqWpResult.postId;
               setResult_i.faqWpUrl = faqWpResult.postUrl;
-            } catch {
-              // 投稿失敗は無視
+              setResult_i.faqWpPostType = faqWpResult.postType;
+            } catch (wpErr) {
+              setResult_i.faqWpError = wpErr instanceof Error ? wpErr.message : "FAQ投稿に失敗しました";
             }
           }
 
@@ -228,17 +250,59 @@ export default function BulkGenerator({ profile }: Props) {
           );
           setResult_i.blogHtml = blogHtml;
 
-          // ブログをWordPressに投稿
+          // ブログをWordPressに投稿（SEOデータ付き）
           if (hasWordPress) {
+            bulkResult.overallProgress = `${label} ブログSEO情報を生成中...`;
+            setResult({ ...bulkResult });
+
+            // SEOデータを自動生成
+            let blogSeo: SeoData = {};
+            try {
+              const seoRaw = await callGenerate(
+                `以下のブログ記事のSEO情報をJSON形式で生成してください。JSON以外の文字は一切出力しないでください。
+
+治療院: ${profile.name}（${profile.area}）
+症状キーワード: ${keyword}
+記事タイトル: ${faq.blogTitle}
+
+生成項目:
+{
+  "seoTitle": "SEOタイトル（32文字以内、キーワードを含む）",
+  "seoDescription": "メタディスクリプション（120文字以内）",
+  "metaKeywords": "メタキーワード（カンマ区切り10個）",
+  "ogpTitle": "OGPタイトル（40文字以内）",
+  "ogpDescription": "OGP説明文（90文字以内）"
+}`,
+                "blog-seo",
+                500
+              );
+              const jsonMatch = seoRaw.match(/\{[\s\S]*\}/);
+              if (jsonMatch) {
+                blogSeo = JSON.parse(jsonMatch[0]);
+              }
+            } catch {
+              // SEO生成失敗時はデフォルト値を使用
+              blogSeo = {
+                seoTitle: `${faq.blogTitle}｜${profile.area}${profile.name}`.slice(0, 32),
+                seoDescription: `${profile.area}の${profile.name}が${keyword}の原因と改善方法を解説。${faq.question}`.slice(0, 120),
+                metaKeywords: `${keyword},${keyword} 原因,${keyword} 改善,${profile.area} ${profile.category},${profile.name}`,
+                ogpTitle: faq.blogTitle.slice(0, 40),
+                ogpDescription: `${profile.area}の${profile.name}が${keyword}について詳しく解説します。`.slice(0, 90),
+              };
+            }
+
+            // SEOデータを結果に保存（コピー用表示のため）
+            setResult_i.blogSeoData = blogSeo;
+
             bulkResult.overallProgress = `${label} ブログをWordPressに投稿中...`;
             setResult({ ...bulkResult });
 
             try {
-              const wpResult = await postToWordPress(faq.blogTitle, blogHtml, faq.blogSlug, blogCategory);
+              const wpResult = await postToWordPress(faq.blogTitle, blogHtml, faq.blogSlug, blogCategory, undefined, blogSeo);
               blogUrl = wpResult.postUrl;
               setResult_i.blogWpUrl = blogUrl;
-            } catch {
-              // 投稿失敗
+            } catch (wpErr) {
+              setResult_i.blogWpError = wpErr instanceof Error ? wpErr.message : "ブログ投稿に失敗しました";
             }
           } else {
             blogUrl = `https://${profile.name.replace(/\s/g, "")}.com/blog/${faq.blogSlug}`;
@@ -426,10 +490,10 @@ export default function BulkGenerator({ profile }: Props) {
   );
 
   const OPTION_ITEMS: { key: keyof ContentOptions; label: string; desc: string; color: string }[] = [
-    { key: "faq", label: "FAQ投稿", desc: "WordPressの「よくある質問」に個別投稿", color: "green" },
-    { key: "blog", label: "ブログ記事", desc: "FAQを深掘りしたブログ記事を生成・投稿", color: "blue" },
-    { key: "gbp", label: "GBP投稿", desc: "Googleマイビジネスの投稿文を生成", color: "red" },
-    { key: "gbpImage", label: "GBP画像", desc: "GBP投稿用の画像を自動生成・自動投稿", color: "red" },
+    { key: "faq", label: "FAQ投稿", desc: "WordPressの「よくある質問」に投稿（環境により手動コピーの場合あり）", color: "green" },
+    { key: "blog", label: "ブログ記事", desc: "FAQを深掘りしたブログ記事を生成・投稿（SEO情報付き）", color: "blue" },
+    { key: "gbp", label: "GBP投稿文", desc: "Googleマイビジネスの投稿文を生成（Google連携済みなら投稿も可能）", color: "red" },
+    { key: "gbpImage", label: "GBP画像", desc: "GBP投稿用の画像を生成（Google連携済みなら投稿も可能）", color: "red" },
     { key: "note", label: "note記事", desc: "noteに投稿するマークダウン記事を生成", color: "orange" },
   ];
 
@@ -679,7 +743,7 @@ export default function BulkGenerator({ profile }: Props) {
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
               <p className="text-xs text-yellow-700">
                 WordPress未設定のため、コンテンツはコピー用に生成されます。
-                設定画面でWordPress連携を追加すると、自動投稿が有効になります。
+                設定画面でWordPress連携を追加すると、ブログ記事の投稿が可能になります。
               </p>
             </div>
           )}
@@ -762,13 +826,31 @@ export default function BulkGenerator({ profile }: Props) {
                 </div>
                 <div className="flex gap-2 mt-2 flex-wrap">
                   {setItem.faqWpUrl && (
-                    <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full">FAQ投稿済</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                      setItem.faqWpPostType?.includes("faq") ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+                    }`}>
+                      {setItem.faqWpPostType?.includes("faq") ? "FAQ投稿済" : "ブログに投稿済（FAQ非対応）"}
+                    </span>
+                  )}
+                  {setItem.faqWpError && (
+                    <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full" title={setItem.faqWpError}>
+                      FAQ投稿エラー
+                    </span>
                   )}
                   {setItem.blogHtml && (
-                    <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">ブログ生成済</span>
+                    <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                      {setItem.blogWpUrl ? "ブログ投稿済" : "ブログ生成済"}
+                    </span>
+                  )}
+                  {setItem.blogWpError && (
+                    <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full" title={setItem.blogWpError}>
+                      ブログ投稿エラー
+                    </span>
                   )}
                   {setItem.gbpPost && (
-                    <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full">GBP生成済</span>
+                    <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                      {setItem.gbpPosted ? "GBP投稿済" : "GBP文生成済"}
+                    </span>
                   )}
                   {setItem.noteArticle && (
                     <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">note生成済</span>
@@ -777,6 +859,16 @@ export default function BulkGenerator({ profile }: Props) {
               </div>
 
               <div className="p-5 space-y-4">
+                {/* WordPress投稿エラー表示 */}
+                {(setItem.faqWpError || setItem.blogWpError) && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-xs font-medium text-red-700 mb-1">WordPress投稿エラー</p>
+                    {setItem.faqWpError && <p className="text-xs text-red-600">FAQ: {setItem.faqWpError}</p>}
+                    {setItem.blogWpError && <p className="text-xs text-red-600">ブログ: {setItem.blogWpError}</p>}
+                    <p className="text-xs text-red-500 mt-1">設定タブでWordPress接続情報を確認してください。</p>
+                  </div>
+                )}
+
                 {/* FAQ回答 */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -804,6 +896,29 @@ export default function BulkGenerator({ profile }: Props) {
                   </div>
                 </div>
 
+                {/* FAQ SEO/OGP（手動コピー用） */}
+                {setItem.faqWpPostType && !setItem.faqWpPostType.includes("faq") && (
+                  <ResultAccordion
+                    title="FAQ SEO設定（手動コピー用）"
+                    color="green"
+                    expanded={expandedSection === `faq-seo-${setIndex}`}
+                    onToggle={() => setExpandedSection(expandedSection === `faq-seo-${setIndex}` ? null : `faq-seo-${setIndex}`)}
+                    onCopy={() => copySection(`faq-seo-all-${setIndex}`, [
+                      `SEOタイトル: ${setItem.faq.seoTitle || ""}`,
+                      `SEO説明文: ${setItem.faq.seoDescription || ""}`,
+                      `スラッグ: ${setItem.faq.slug || ""}`,
+                    ].join("\n"))}
+                    copied={copiedSection === `faq-seo-all-${setIndex}`}
+                  >
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500 mb-3">FAQ投稿タイプに非対応のため、WordPress管理画面で手動入力してください。</p>
+                      <SeoFieldRow label="SEOタイトル" value={setItem.faq.seoTitle || ""} copyKey={`faq-seotitle-${setIndex}`} copiedSection={copiedSection} onCopy={copySection} />
+                      <SeoFieldRow label="SEO説明文" value={setItem.faq.seoDescription || ""} copyKey={`faq-seodesc-${setIndex}`} copiedSection={copiedSection} onCopy={copySection} />
+                      <SeoFieldRow label="スラッグ" value={setItem.faq.slug || ""} copyKey={`faq-slug-${setIndex}`} copiedSection={copiedSection} onCopy={copySection} />
+                    </div>
+                  </ResultAccordion>
+                )}
+
                 {/* ブログ記事 */}
                 {setItem.blogHtml && (
                   <ResultAccordion
@@ -818,6 +933,33 @@ export default function BulkGenerator({ profile }: Props) {
                     <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed max-h-[300px] overflow-y-auto">
                       {setItem.blogHtml}
                     </pre>
+                  </ResultAccordion>
+                )}
+
+                {/* ブログ SEO/OGP設定（手動コピー用） */}
+                {setItem.blogSeoData && (
+                  <ResultAccordion
+                    title="ブログ SEO/OGP設定（コピー用）"
+                    color="blue"
+                    expanded={expandedSection === `blog-seo-${setIndex}`}
+                    onToggle={() => setExpandedSection(expandedSection === `blog-seo-${setIndex}` ? null : `blog-seo-${setIndex}`)}
+                    onCopy={() => copySection(`blog-seo-all-${setIndex}`, [
+                      `SEOタイトル: ${setItem.blogSeoData?.seoTitle || ""}`,
+                      `SEO説明文: ${setItem.blogSeoData?.seoDescription || ""}`,
+                      `メタキーワード: ${setItem.blogSeoData?.metaKeywords || ""}`,
+                      `OGPタイトル: ${setItem.blogSeoData?.ogpTitle || ""}`,
+                      `OGP説明文: ${setItem.blogSeoData?.ogpDescription || ""}`,
+                    ].join("\n"))}
+                    copied={copiedSection === `blog-seo-all-${setIndex}`}
+                  >
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500 mb-3">WordPress管理画面のSEO設定・OGP設定に以下を入力してください。</p>
+                      <SeoFieldRow label="SEOタイトル" value={setItem.blogSeoData.seoTitle || ""} copyKey={`blog-seotitle-${setIndex}`} copiedSection={copiedSection} onCopy={copySection} />
+                      <SeoFieldRow label="SEO説明文" value={setItem.blogSeoData.seoDescription || ""} copyKey={`blog-seodesc-${setIndex}`} copiedSection={copiedSection} onCopy={copySection} />
+                      <SeoFieldRow label="メタキーワード" value={setItem.blogSeoData.metaKeywords || ""} copyKey={`blog-metakw-${setIndex}`} copiedSection={copiedSection} onCopy={copySection} />
+                      <SeoFieldRow label="OGPタイトル" value={setItem.blogSeoData.ogpTitle || ""} copyKey={`blog-ogptitle-${setIndex}`} copiedSection={copiedSection} onCopy={copySection} />
+                      <SeoFieldRow label="OGP説明文" value={setItem.blogSeoData.ogpDescription || ""} copyKey={`blog-ogpdesc-${setIndex}`} copiedSection={copiedSection} onCopy={copySection} />
+                    </div>
                   </ResultAccordion>
                 )}
 
@@ -958,6 +1100,34 @@ function ResultAccordion({
           <div className="bg-gray-50 rounded-lg p-3">{children}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+function SeoFieldRow({
+  label, value, copyKey, copiedSection, onCopy,
+}: {
+  label: string;
+  value: string;
+  copyKey: string;
+  copiedSection: string | null;
+  onCopy: (key: string, text: string) => void;
+}) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start gap-2 bg-white rounded-lg p-2 border border-gray-100">
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] font-medium text-gray-400 mb-0.5">{label}</div>
+        <div className="text-xs text-gray-700 break-all">{value}</div>
+      </div>
+      <button
+        onClick={() => onCopy(copyKey, value)}
+        className={`shrink-0 text-[10px] px-2 py-1 rounded transition-all ${
+          copiedSection === copyKey ? "bg-green-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+        }`}
+      >
+        {copiedSection === copyKey ? "済" : "コピー"}
+      </button>
     </div>
   );
 }

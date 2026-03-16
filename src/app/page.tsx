@@ -21,12 +21,14 @@ import SettingsTab from "@/components/SettingsTab";
 import ContentCalendar from "@/components/ContentCalendar";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import RankingChecker from "@/components/RankingChecker";
+import TaskManager from "@/components/TaskManager";
 
 
-type Tab = "dashboard" | "bulk" | "ranking" | "checklist" | "note" | "gbp" | "gbp-image" | "llmo" | "wordpress" | "history" | "calendar" | "analytics" | "settings";
+type Tab = "dashboard" | "tasks" | "bulk" | "ranking" | "checklist" | "note" | "gbp" | "gbp-image" | "llmo" | "wordpress" | "history" | "calendar" | "analytics" | "settings";
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: "dashboard", label: "概要", icon: "📊" },
+  { key: "tasks", label: "タスク管理", icon: "✅" },
   { key: "bulk", label: "一括生成", icon: "⚡" },
   { key: "ranking", label: "順位チェック", icon: "🔍" },
   { key: "checklist", label: "施策リスト", icon: "📋" },
@@ -240,6 +242,8 @@ export default function Home() {
           />
         )}
 
+        {tab === "tasks" && <TaskManager />}
+
         {tab === "bulk" && <BulkGenerator profile={profile} />}
 
         {tab === "ranking" && <RankingChecker profile={profile} />}
@@ -286,10 +290,15 @@ export default function Home() {
         {tab === "wordpress" && (
           <div className="space-y-6">
             <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-2">WordPress自動投稿</h2>
+              <h2 className="text-lg font-bold text-gray-800 mb-2">WordPress投稿</h2>
               <p className="text-sm text-gray-600 mb-4">
-                SEO・LLMO最適化されたブログ記事やFAQをWordPressに自動投稿します。
+                SEO・LLMO最適化されたブログ記事やFAQを生成し、WordPressに投稿できます。
               </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                <p className="text-xs text-blue-700">
+                  ブログ記事はWordPressに直接投稿されます。FAQ（よくある質問）やSEO/OGP設定は、WordPressの環境によって自動投稿できない場合があります。その場合はコピー用のデータが表示されます。
+                </p>
+              </div>
               {!hasWordPress && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
                   <p className="text-xs text-yellow-700">

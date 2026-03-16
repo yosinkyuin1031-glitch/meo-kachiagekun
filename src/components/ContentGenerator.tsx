@@ -82,7 +82,7 @@ const TYPE_CONFIG: Record<
   blog: {
     title: "ブログ記事を生成（WordPress用）",
     description:
-      "SEO・LLMO最適化されたブログ記事をHTML形式で生成し、WordPressに自動投稿できます",
+      "SEO・LLMO最適化されたブログ記事をHTML形式で生成します。WordPress連携済みなら投稿も可能",
     icon: "📄",
     needsKeyword: true,
     needsTopic: true,
@@ -123,6 +123,7 @@ export default function ContentGenerator({ profile, type }: Props) {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [notePublishing, setNotePublishing] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [wpStatus, setWpStatus] = useState<{
@@ -130,6 +131,12 @@ export default function ContentGenerator({ profile, type }: Props) {
     message: string;
     url?: string;
   } | null>(null);
+  const [noteStatus, setNoteStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+    url?: string;
+  } | null>(null);
+  const [notePublishAs, setNotePublishAs] = useState<"publish" | "draft">("draft");
   const [currentContentId, setCurrentContentId] = useState<string | null>(null);
   const [publishAs, setPublishAs] = useState<"publish" | "draft">("draft");
   const [history, setHistory] = useState<GeneratedContent[]>(() =>
@@ -242,6 +249,49 @@ export default function ContentGenerator({ profile, type }: Props) {
       htmlContent = markdownToHtml(result);
     }
 
+    // FAQ/faq-short の場合はカスタム投稿タイプとして投稿
+    const isFaqType = type === "faq" || type === "faq-short";
+
+    // ブログ記事の場合はSEOデータを自動生成
+    let seoData: Record<string, string> | undefined;
+    if (type === "blog" || type === "note") {
+      try {
+        const seoRes = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            apiKey: profile.anthropicKey,
+            prompt: blogSeoPrompt(profile, keyword, topic || keyword),
+            type: "blog-seo",
+            maxTokens: 500,
+          }),
+        });
+        const seoJson = await seoRes.json();
+        if (seoRes.ok && seoJson.content) {
+          const jsonMatch = seoJson.content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            seoData = {
+              seoTitle: parsed.seoTitle || "",
+              seoDescription: parsed.metaDescription || parsed.seoDescription || "",
+              metaKeywords: parsed.metaKeywords || "",
+              ogpTitle: parsed.ogpTitle || "",
+              ogpDescription: parsed.ogpDescription || "",
+            };
+          }
+        }
+      } catch {
+        // SEO生成失敗 → デフォルト値
+        seoData = {
+          seoTitle: postTitle.slice(0, 32),
+          seoDescription: `${profile.area}の${profile.name}が${keyword}について解説。`.slice(0, 120),
+          metaKeywords: `${keyword},${profile.area},${profile.name}`,
+          ogpTitle: postTitle.slice(0, 40),
+          ogpDescription: `${profile.area}の${profile.name}が${keyword}について詳しく解説します。`.slice(0, 90),
+        };
+      }
+    }
+
     try {
       const res = await fetch("/api/wordpress", {
         method: "POST",
@@ -253,6 +303,8 @@ export default function ContentGenerator({ profile, type }: Props) {
           title: postTitle,
           content: htmlContent,
           status: publishAs,
+          ...(isFaqType ? { categorySlug: "faq", postType: "faq" } : {}),
+          ...(seoData ? { seo: seoData } : {}),
         }),
       });
 
@@ -284,6 +336,71 @@ export default function ContentGenerator({ profile, type }: Props) {
       setPublishing(false);
     }
   };
+
+  const publishToNote = async () => {
+    if (!profile.noteLogin?.email || !profile.noteLogin?.password) {
+      setNoteStatus({
+        type: "error",
+        message: "設定画面でnoteのログイン情報を入力してください。",
+      });
+      return;
+    }
+
+    if (!result) {
+      setNoteStatus({ type: "error", message: "先にコンテンツを生成してください。" });
+      return;
+    }
+
+    setNotePublishing(true);
+    setNoteStatus(null);
+
+    // タイトルを抽出
+    const h1Match = result.match(/^#\s+(.+)$/m);
+    const postTitle = h1Match ? h1Match[1] : topic || keyword;
+
+    // ハッシュタグ
+    const hashtags = profile.noteProfile?.hashtags || [];
+
+    try {
+      const res = await fetch("/api/note-publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: profile.noteLogin.email,
+          password: profile.noteLogin.password,
+          title: postTitle,
+          content: result,
+          status: notePublishAs,
+          hashtags,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setNoteStatus({ type: "error", message: data.error });
+        return;
+      }
+
+      setNoteStatus({
+        type: "success",
+        message: data.message,
+        url: data.postUrl,
+      });
+
+      // コンテンツにnote情報を保存
+      if (currentContentId) {
+        updateContent(currentContentId, {
+          notePostUrl: data.postUrl,
+        });
+      }
+    } catch {
+      setNoteStatus({ type: "error", message: "note投稿エラーが発生しました" });
+    } finally {
+      setNotePublishing(false);
+    }
+  };
+
+  const hasNoteLogin = !!(profile.noteLogin?.email && profile.noteLogin?.password);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(result);
@@ -408,13 +525,102 @@ export default function ContentGenerator({ profile, type }: Props) {
             </pre>
           </div>
 
+          {/* note投稿ボタン */}
+          {type === "note" && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              {!hasNoteLogin ? (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <p className="text-sm text-green-800">
+                    noteに自動投稿するには、設定画面でnoteのログイン情報を入力してください。
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm font-medium text-gray-700">
+                      note投稿:
+                    </label>
+                    <select
+                      value={notePublishAs}
+                      onChange={(e) =>
+                        setNotePublishAs(e.target.value as "publish" | "draft")
+                      }
+                      className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+                    >
+                      <option value="draft">下書き保存</option>
+                      <option value="publish">即時公開</option>
+                    </select>
+                    <button
+                      onClick={publishToNote}
+                      disabled={notePublishing}
+                      className={`flex-1 py-2.5 rounded-lg font-medium text-sm transition-all ${
+                        notePublishing
+                          ? "bg-gray-400 cursor-not-allowed text-white"
+                          : "bg-green-600 text-white hover:bg-green-700 shadow-md"
+                      }`}
+                    >
+                      {notePublishing ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <svg
+                            className="animate-spin h-4 w-4"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                              fill="none"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                            />
+                          </svg>
+                          noteに投稿中...
+                        </span>
+                      ) : (
+                        `📝 noteに${notePublishAs === "publish" ? "公開" : "下書き保存"}`
+                      )}
+                    </button>
+                  </div>
+
+                  {noteStatus && (
+                    <div
+                      className={`px-4 py-3 rounded-lg text-sm ${
+                        noteStatus.type === "success"
+                          ? "bg-green-50 text-green-700 border border-green-200"
+                          : "bg-red-50 text-red-600 border border-red-200"
+                      }`}
+                    >
+                      <p>{noteStatus.message}</p>
+                      {noteStatus.url && noteStatus.url !== "about:blank" && (
+                        <a
+                          href={noteStatus.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline font-medium mt-1 inline-block"
+                        >
+                          noteで確認する →
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* WordPress投稿ボタン */}
           {config.canPublishToWP && (
             <div className="mt-4 pt-4 border-t border-gray-100">
               {!hasWordPress ? (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                   <p className="text-sm text-yellow-800">
-                    WordPressに自動投稿するには、設定画面でWordPress接続情報を入力してください。
+                    WordPressに投稿するには、設定画面でWordPress接続情報を入力してください。
                   </p>
                 </div>
               ) : (

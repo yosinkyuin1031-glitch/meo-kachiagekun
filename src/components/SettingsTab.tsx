@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ClinicProfile, WordPressSettings, GoogleSettings } from "@/lib/types";
+import { ClinicProfile, WordPressSettings, GoogleSettings, NoteProfile } from "@/lib/types";
 import { getGoogleSettings, saveGoogleSettings, clearGoogleSettings } from "@/lib/storage";
 
 interface Props {
@@ -251,6 +251,7 @@ export default function SettingsTab({
                   category: data.category || "整体院",
                   ownerName: data.ownerName,
                   specialty: data.specialty,
+                  noteProfile: data.noteProfile,
                   urls: data.urls,
                   wordpress: data.wordpress,
                 };
@@ -348,9 +349,9 @@ function GoogleSettingsSection() {
         <div className="flex items-center gap-3">
           <span className="text-2xl">📍</span>
           <div className="text-left">
-            <h3 className="font-bold text-gray-800 text-lg">GBP自動投稿（Google連携）</h3>
+            <h3 className="font-bold text-gray-800 text-lg">GBP投稿（Google連携）</h3>
             <p className="text-xs text-gray-500">
-              Googleビジネスプロフィールに自動で投稿します
+              Google連携を設定すると、一括生成時にGBPへ投稿できます
             </p>
           </div>
         </div>
@@ -376,7 +377,7 @@ function GoogleSettingsSection() {
                   <div>
                     <p className="text-sm font-medium text-green-800">Google連携済み</p>
                     <p className="text-xs text-green-600 mt-1">ビジネス: {google.locationName}</p>
-                    <p className="text-xs text-gray-500 mt-1">一括生成時にGBPへ自動投稿されます</p>
+                    <p className="text-xs text-gray-500 mt-1">一括生成時にGBPへの投稿が有効になります</p>
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -593,13 +594,39 @@ function ClinicEditForm({
   const [noteUrl, setNoteUrl] = useState(clinic?.urls?.noteUrl || "");
   const [showUrlSection, setShowUrlSection] = useState(!!(clinic?.urls?.websiteUrl));
 
+  // note設定
+  const [noteDisplayName, setNoteDisplayName] = useState(clinic?.noteProfile?.displayName || "");
+  const [noteId, setNoteId] = useState(clinic?.noteProfile?.noteId || "");
+  const [noteBio, setNoteBio] = useState(clinic?.noteProfile?.bio || "");
+  const [noteLongBio, setNoteLongBio] = useState(clinic?.noteProfile?.longBio || "");
+  const [noteHeaderImageGuide, setNoteHeaderImageGuide] = useState(clinic?.noteProfile?.headerImageGuide || "");
+  const [noteIconGuide, setNoteIconGuide] = useState(clinic?.noteProfile?.iconGuide || "");
+  const [noteArticleFooter, setNoteArticleFooter] = useState(clinic?.noteProfile?.articleFooter || "");
+  const [noteHashtags, setNoteHashtags] = useState(clinic?.noteProfile?.hashtags?.join(", ") || "");
+  const [noteWritingTone, setNoteWritingTone] = useState(clinic?.noteProfile?.writingTone || "");
+  const [showNoteSection, setShowNoteSection] = useState(!!(clinic?.noteProfile?.displayName));
+
+  // noteログイン情報
+  const [noteLoginEmail, setNoteLoginEmail] = useState(clinic?.noteLogin?.email || "");
+  const [noteLoginPassword, setNoteLoginPassword] = useState(clinic?.noteLogin?.password || "");
+
   // WordPress
   const [wpSiteUrl, setWpSiteUrl] = useState(clinic?.wordpress?.siteUrl || "");
   const [wpUsername, setWpUsername] = useState(clinic?.wordpress?.username || "");
   const [wpAppPassword, setWpAppPassword] = useState(clinic?.wordpress?.appPassword || "");
   const [showWpSection, setShowWpSection] = useState(!!(clinic?.wordpress?.siteUrl));
   const [showWpPassword, setShowWpPassword] = useState(false);
-  const [wpTestResult, setWpTestResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [wpTestResult, setWpTestResult] = useState<{
+    type: "success" | "error";
+    message: string;
+    details?: {
+      userName?: string;
+      roles?: string[];
+      hasFaqPostType?: boolean;
+      faqEndpoint?: string;
+      seoPlugin?: string;
+    };
+  } | null>(null);
   const [wpTesting, setWpTesting] = useState(false);
 
   const handleSubmit = () => {
@@ -621,33 +648,88 @@ function ClinicEditForm({
         ? { siteUrl: wpSiteUrl, username: wpUsername, appPassword: wpAppPassword }
         : undefined;
 
+    const noteProfile: NoteProfile | undefined = noteDisplayName ? {
+      displayName: noteDisplayName,
+      noteId: noteId || undefined,
+      bio: noteBio || undefined,
+      longBio: noteLongBio || undefined,
+      headerImageGuide: noteHeaderImageGuide || undefined,
+      iconGuide: noteIconGuide || undefined,
+      articleFooter: noteArticleFooter || undefined,
+      hashtags: noteHashtags ? noteHashtags.split(",").map(t => t.trim()).filter(Boolean) : undefined,
+      writingTone: noteWritingTone || undefined,
+    } : undefined;
+
     const categories = selectedCategories.length > 0 ? selectedCategories : ["整体院"];
     const category = categories.join("・");
 
-    onSave({ name, area, category, categories, description, ownerName, specialty, keywords, urls, wordpress });
+    const noteLogin = noteLoginEmail && noteLoginPassword
+      ? { email: noteLoginEmail, password: noteLoginPassword }
+      : undefined;
+
+    onSave({ name, area, category, categories, description, ownerName, specialty, keywords, urls, wordpress, noteProfile, noteLogin });
   };
 
   const testWordPress = async () => {
     if (!wpSiteUrl || !wpUsername || !wpAppPassword) {
-      setWpTestResult({ type: "error", message: "すべて入力してください" });
+      setWpTestResult({ type: "error", message: "サイトURL・ユーザー名・アプリケーションパスワードをすべて入力してください" });
       return;
     }
+
+    // URLの正規化
+    let normalizedUrl = wpSiteUrl.trim();
+    if (!normalizedUrl.startsWith("http")) {
+      normalizedUrl = "https://" + normalizedUrl;
+    }
+    normalizedUrl = normalizedUrl.replace(/\/+$/, "");
+    if (normalizedUrl !== wpSiteUrl) {
+      setWpSiteUrl(normalizedUrl);
+    }
+
     setWpTesting(true);
     setWpTestResult(null);
     try {
       const res = await fetch("/api/wordpress", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ siteUrl: wpSiteUrl, username: wpUsername, appPassword: wpAppPassword }),
+        body: JSON.stringify({
+          siteUrl: normalizedUrl,
+          username: wpUsername.trim(),
+          appPassword: wpAppPassword.trim(),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setWpTestResult({ type: "error", message: data.error });
+        let errorMsg = data.error || `接続エラー (${res.status})`;
+        if (res.status === 401 || res.status === 403) {
+          errorMsg += "\nユーザー名またはアプリケーションパスワードを確認してください。パスワードはスペースを含めてそのまま入力してください。";
+        } else if (res.status === 404) {
+          errorMsg = "WordPress REST APIが見つかりません。サイトURLを確認してください（例: https://your-site.com）";
+        } else if (res.status >= 500) {
+          errorMsg = "WordPressサーバーでエラーが発生しました。しばらく待ってから再試行してください。";
+        }
+        setWpTestResult({ type: "error", message: errorMsg });
       } else {
-        setWpTestResult({ type: "success", message: `接続OK: ${data.userName}` });
+        const details = {
+          userName: data.userName,
+          roles: data.roles,
+          hasFaqPostType: data.hasFaqPostType,
+          faqEndpoint: data.faqEndpoint,
+          seoPlugin: data.seoPlugin,
+        };
+        setWpTestResult({
+          type: "success",
+          message: `接続OK: ${data.userName}`,
+          details,
+        });
       }
-    } catch {
-      setWpTestResult({ type: "error", message: "接続失敗" });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (msg.includes("fetch") || msg.includes("network") || msg.includes("Failed")) {
+        setWpTestResult({ type: "error", message: "ネットワークエラー: サイトURLが正しいか確認してください。" });
+      } else {
+        setWpTestResult({ type: "error", message: `接続失敗: ${msg || "不明なエラー"}` });
+      }
     } finally {
       setWpTesting(false);
     }
@@ -829,7 +911,7 @@ function ClinicEditForm({
 
         {showUrlSection && (
           <div className="mt-3 p-4 bg-orange-50 rounded-lg border border-orange-200 space-y-2.5">
-            <p className="text-xs text-orange-600 mb-1">設定したURLはGBP投稿やブログ記事に自動で埋め込まれます</p>
+            <p className="text-xs text-orange-600 mb-1">設定したURLはGBP投稿文やブログ記事の生成時に埋め込まれます</p>
             {urlField(websiteUrl, setWebsiteUrl, "ホームページURL", "🏠")}
             {urlField(bookingUrl, setBookingUrl, "予約ページURL", "📅")}
             {urlField(googleMapUrl, setGoogleMapUrl, "Googleマップ口コミURL", "📍")}
@@ -838,6 +920,129 @@ function ClinicEditForm({
             {urlField(instagramUrl, setInstagramUrl, "Instagram URL", "📱")}
             {urlField(lineUrl, setLineUrl, "LINE公式URL", "🟩")}
             {urlField(noteUrl, setNoteUrl, "noteアカウントURL", "📝")}
+          </div>
+        )}
+      </div>
+
+      {/* note設定（折りたたみ） */}
+      <div>
+        <button
+          onClick={() => setShowNoteSection(!showNoteSection)}
+          className="flex items-center gap-2 text-sm font-medium text-green-600 hover:text-green-700"
+        >
+          <svg className={`w-4 h-4 transition-transform ${showNoteSection ? "rotate-90" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          note設定 {noteDisplayName ? "(設定済み)" : "(noteプロフィール・記事生成設定)"}
+        </button>
+
+        {showNoteSection && (
+          <div className="mt-3 p-4 bg-green-50 rounded-lg border border-green-200 space-y-3">
+            <p className="text-xs text-green-600 mb-1">noteの記事生成時にプロフィール情報・定型文・ハッシュタグが自動で反映されます</p>
+
+            {/* noteログイン情報（自動投稿用） */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3">
+              <p className="text-xs font-bold text-green-700 mb-2">noteログイン情報（自動投稿用）</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">メールアドレス</label>
+                  <input type="email" value={noteLoginEmail} onChange={(e) => setNoteLoginEmail(e.target.value)}
+                    placeholder="note登録メール"
+                    className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">パスワード</label>
+                  <input type="password" value={noteLoginPassword} onChange={(e) => setNoteLoginPassword(e.target.value)}
+                    placeholder="noteパスワード"
+                    className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">※ 記事生成後に「noteに投稿」ボタンが表示されます</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">note表示名（引用名）</label>
+                <input type="text" value={noteDisplayName} onChange={(e) => setNoteDisplayName(e.target.value)}
+                  placeholder="例：大口陽平｜大口神経整体院"
+                  className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">noteアカウントID</label>
+                <div className="flex items-center">
+                  <span className="text-sm text-gray-500 mr-1">@</span>
+                  <input type="text" value={noteId} onChange={(e) => setNoteId(e.target.value)}
+                    placeholder="例：oguchi_seitai"
+                    className="flex-1 px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">自己紹介文（140文字以内）</label>
+              <textarea value={noteBio} onChange={(e) => setNoteBio(e.target.value)} rows={2}
+                placeholder="例：大阪・長居で神経整体院を経営。重症・慢性の痛みやしびれ専門。どこに行っても変わらなかった方の「最後の砦」を目指しています。"
+                className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500 resize-none" />
+              <p className="text-xs text-gray-400 mt-0.5">{noteBio.length}/140文字</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">詳細自己紹介（記事末尾の著者情報等に使用）</label>
+              <textarea value={noteLongBio} onChange={(e) => setNoteLongBio(e.target.value)} rows={3}
+                placeholder="例：大口神経整体院 院長・大口陽平。神経整体×内臓×骨格×東洋医学を掛け合わせ、病院でも他の治療院でも改善しなかった重症・難治性の症状に向き合います。「痛みで止まった人生に、もう一度自由を」をモットーに、完全予約制で一人ひとりに120分じっくり向き合います。"
+                className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500 resize-none" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">記事のトーン</label>
+              <input type="text" value={noteWritingTone} onChange={(e) => setNoteWritingTone(e.target.value)}
+                placeholder="例：専門的だが親しみやすい。患者の悩みに寄り添いつつ、根拠ある情報を発信"
+                className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">記事末尾の定型文</label>
+              <textarea value={noteArticleFooter} onChange={(e) => setNoteArticleFooter(e.target.value)} rows={3}
+                placeholder={"例：\n---\n✍️ この記事を書いた人\n大口陽平｜大口神経整体院 院長\n📍大阪市住吉区長居\n📞 完全予約制｜初回は90〜120分\n🔗 ホームページはこちら → https://..."}
+                className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500 resize-none" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">よく使うハッシュタグ（カンマ区切り）</label>
+              <input type="text" value={noteHashtags} onChange={(e) => setNoteHashtags(e.target.value)}
+                placeholder="例：整体, 神経整体, 腰痛, 坐骨神経痛, 長居, 大阪整体, 慢性痛"
+                className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">ヘッダー画像メモ</label>
+                <input type="text" value={noteHeaderImageGuide} onChange={(e) => setNoteHeaderImageGuide(e.target.value)}
+                  placeholder="例：院内写真 or 施術風景"
+                  className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">アイコン画像メモ</label>
+                <input type="text" value={noteIconGuide} onChange={(e) => setNoteIconGuide(e.target.value)}
+                  placeholder="例：プロフィール写真（白衣）"
+                  className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
+              </div>
+            </div>
+
+            {/* note設定ガイド */}
+            <div className="p-3 bg-white border border-green-200 rounded-lg">
+              <p className="text-xs font-medium text-green-800 mb-2">note.comプロフィール設定チェックリスト</p>
+              <ul className="text-xs text-green-700 space-y-1 list-disc list-inside">
+                <li>アカウントID: note.com/<strong>@xxx</strong> の部分</li>
+                <li>表示名: 検索で見つかりやすい「名前｜肩書き」形式推奨</li>
+                <li>自己紹介: 140文字以内。キーワード（地域名+症状名）を含める</li>
+                <li>アイコン: 顔写真推奨（信頼性UP）</li>
+                <li>ヘッダー: 院の雰囲気が伝わる写真（施術風景・院内）</li>
+                <li>リンク設定: note設定 → SNS連携 → HP・LINE等のURLを登録</li>
+                <li>記事マガジン: テーマ別にマガジンを作成（例: 腰痛改善、自律神経）</li>
+              </ul>
+            </div>
           </div>
         )}
       </div>
@@ -903,13 +1108,36 @@ function ClinicEditForm({
               {wpTesting ? "テスト中..." : "接続テスト"}
             </button>
             {wpTestResult && (
-              <p className={`text-xs px-3 py-2 rounded-lg ${
+              <div className={`text-xs px-3 py-2 rounded-lg space-y-1.5 ${
                 wpTestResult.type === "success"
-                  ? "bg-green-50 text-green-700"
-                  : "bg-red-50 text-red-600"
+                  ? "bg-green-50 text-green-700 border border-green-200"
+                  : "bg-red-50 text-red-600 border border-red-200"
               }`}>
-                {wpTestResult.message}
-              </p>
+                <p className="font-medium whitespace-pre-line">{wpTestResult.message}</p>
+                {wpTestResult.details && (
+                  <div className="space-y-1 pt-1 border-t border-green-200">
+                    <p>ブログ記事投稿: <span className="font-medium text-green-800">対応</span></p>
+                    <p>
+                      FAQ投稿タイプ: {wpTestResult.details.hasFaqPostType
+                        ? <span className="font-medium text-green-800">対応（自動投稿可能）</span>
+                        : <span className="font-medium text-yellow-700">非対応（ブログ記事として投稿＋手動コピー用データ表示）</span>
+                      }
+                    </p>
+                    <p>
+                      SEOプラグイン: <span className="font-medium text-green-800">
+                        {wpTestResult.details.seoPlugin === "selfull" ? "selfullテーマ" :
+                         wpTestResult.details.seoPlugin === "ssp" ? "SEO SIMPLE PACK" :
+                         wpTestResult.details.seoPlugin === "yoast" ? "Yoast SEO" :
+                         wpTestResult.details.seoPlugin === "aioseo" ? "All in One SEO" :
+                         wpTestResult.details.seoPlugin || "検出中..."}
+                      </span>
+                    </p>
+                    {wpTestResult.details.roles && (
+                      <p>権限: {wpTestResult.details.roles.join(", ")}</p>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
