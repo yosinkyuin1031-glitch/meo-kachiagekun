@@ -11,95 +11,131 @@ import {
   addClinic,
   updateClinic,
   deleteClinic,
-} from "@/lib/storage";
+} from "@/lib/supabase-storage";
+import { useAuth } from "@/contexts/AuthContext";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import ChecklistTab from "@/components/ChecklistTab";
-import ContentGenerator from "@/components/ContentGenerator";
 import BulkGenerator from "@/components/BulkGenerator";
+import ContentGenerator from "@/components/ContentGenerator";
 import GbpImageGenerator from "@/components/GbpImageGenerator";
 import SettingsTab from "@/components/SettingsTab";
-import ContentCalendar from "@/components/ContentCalendar";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import RankingChecker from "@/components/RankingChecker";
-import TaskManager from "@/components/TaskManager";
+import SearchConsolePanel from "@/components/SearchConsolePanel";
+import ChecklistTab from "@/components/ChecklistTab";
+import ReviewReplyGenerator from "@/components/ReviewReplyGenerator";
+import LocalDataMigration, { hasLocalData } from "@/components/LocalDataMigration";
 
-
-type Tab = "dashboard" | "tasks" | "bulk" | "ranking" | "checklist" | "note" | "gbp" | "gbp-image" | "llmo" | "wordpress" | "history" | "calendar" | "analytics" | "settings";
+type Tab = "dashboard" | "bulk" | "checklist" | "ranking" | "history" | "settings";
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
-  { key: "dashboard", label: "概要", icon: "📊" },
-  { key: "tasks", label: "タスク管理", icon: "✅" },
-  { key: "bulk", label: "一括生成", icon: "⚡" },
+  { key: "dashboard", label: "ダッシュボード", icon: "📊" },
+  { key: "bulk", label: "コンテンツ生成", icon: "⚡" },
+  { key: "checklist", label: "施策チェック", icon: "✅" },
   { key: "ranking", label: "順位チェック", icon: "🔍" },
-  { key: "checklist", label: "施策リスト", icon: "📋" },
-  { key: "note", label: "note記事", icon: "📝" },
-  { key: "gbp", label: "GBP投稿", icon: "📍" },
-  { key: "gbp-image", label: "GBP画像", icon: "🖼️" },
-  { key: "llmo", label: "LLMO対策", icon: "🤖" },
-  { key: "wordpress", label: "WP投稿", icon: "📄" },
   { key: "history", label: "履歴", icon: "📜" },
-  { key: "calendar", label: "カレンダー", icon: "📅" },
-  { key: "analytics", label: "分析", icon: "📈" },
   { key: "settings", label: "設定", icon: "⚙️" },
 ];
 
+type ContentSubTab = "bulk" | "faq" | "blog" | "gbp" | "image" | "note" | "review";
+
+const CONTENT_SUB_TABS: { key: ContentSubTab; label: string; icon: string }[] = [
+  { key: "bulk", label: "一括生成", icon: "⚡" },
+  { key: "faq", label: "よくある質問", icon: "💬" },
+  { key: "blog", label: "ブログ記事", icon: "📄" },
+  { key: "gbp", label: "GBP投稿", icon: "📍" },
+  { key: "review", label: "口コミ返信", icon: "⭐" },
+  { key: "image", label: "画像生成", icon: "🖼️" },
+  { key: "note", label: "note記事", icon: "📝" },
+];
+
 export default function Home() {
+  const { user, loading: authLoading, signOut } = useAuth();
   const [tab, setTab] = useState<Tab>("dashboard");
+  const [contentSubTab, setContentSubTab] = useState<ContentSubTab>("bulk");
   const [profile, setProfile] = useState<BusinessProfile>({
     name: "", area: "", keywords: [], description: "", category: "整体院", anthropicKey: "",
   });
   const [clinics, setClinics] = useState<ClinicProfile[]>([]);
   const [activeClinicId, setActiveClinicId] = useState("");
   const [showClinicSwitcher, setShowClinicSwitcher] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [showMigration, setShowMigration] = useState(false);
 
-  const refreshState = useCallback(() => {
-    const p = getBusinessProfile();
-    setProfile(p);
-    setClinics(getClinics());
-    const s = getSettings();
-    setActiveClinicId(s.activeClinicId || getClinics()[0]?.id || "");
+  const refreshState = useCallback(async () => {
+    try {
+      const [p, cls, s] = await Promise.all([
+        getBusinessProfile(),
+        getClinics(),
+        getSettings(),
+      ]);
+      setProfile(p);
+      setClinics(cls);
+      setActiveClinicId(s.activeClinicId || cls[0]?.id || "");
+    } catch {
+      // 未認証時
+    }
   }, []);
 
   useEffect(() => {
-    refreshState();
-    const clinicList = getClinics();
-    if (clinicList.length === 0) setTab("settings");
-  }, [refreshState]);
+    if (!user) return;
+    (async () => {
+      await refreshState();
+      const cls = await getClinics();
+      if (cls.length === 0) setTab("settings");
+      setDataLoading(false);
+      // Check for local data to migrate
+      if (hasLocalData() && localStorage.getItem("meo_migrated_to_supabase") !== "true") {
+        setShowMigration(true);
+      }
+    })();
+  }, [refreshState, user]);
 
-  const switchClinic = (clinicId: string) => {
-    const settings = getSettings();
+  const switchClinic = async (clinicId: string) => {
+    const settings = await getSettings();
     settings.activeClinicId = clinicId;
-    saveSettings(settings);
+    await saveSettings(settings);
     setActiveClinicId(clinicId);
-    setProfile(getBusinessProfile());
+    const p = await getBusinessProfile();
+    setProfile(p);
     setShowClinicSwitcher(false);
   };
 
-  const handleAddClinic = (clinic: ClinicProfile) => {
-    addClinic(clinic);
-    switchClinic(clinic.id);
-    refreshState();
+  const handleAddClinic = async (clinic: ClinicProfile) => {
+    await addClinic(clinic);
+    await switchClinic(clinic.id);
+    await refreshState();
   };
 
-  const handleUpdateClinic = (id: string, updates: Partial<ClinicProfile>) => {
-    updateClinic(id, updates);
-    refreshState();
+  const handleUpdateClinic = async (id: string, updates: Partial<ClinicProfile>) => {
+    await updateClinic(id, updates);
+    await refreshState();
   };
 
-  const handleDeleteClinic = (id: string) => {
-    deleteClinic(id);
-    const remaining = getClinics();
+  const handleDeleteClinic = async (id: string) => {
+    await deleteClinic(id);
+    const remaining = await getClinics();
     if (remaining.length > 0) {
-      switchClinic(remaining[0].id);
+      await switchClinic(remaining[0].id);
     }
-    refreshState();
+    await refreshState();
   };
 
-  const handleSaveApiKey = (key: string) => {
-    const settings = getSettings();
+  const handleSaveApiKey = async (key: string) => {
+    const settings = await getSettings();
     settings.anthropicKey = key;
-    saveSettings(settings);
-    refreshState();
+    await saveSettings(settings);
+    await refreshState();
+  };
+
+  const handleKeywordsImport = async (newKeywords: string[]) => {
+    const clinic = clinics.find((c) => c.id === activeClinicId);
+    if (!clinic) return;
+    const existing = new Set(clinic.keywords.map((k) => k.toLowerCase()));
+    const unique = newKeywords.filter((k) => !existing.has(k.toLowerCase()));
+    if (unique.length === 0) return;
+    const updated = [...clinic.keywords, ...unique];
+    await updateClinic(clinic.id, { keywords: updated });
+    await refreshState();
   };
 
   const hasWordPress = !!(
@@ -110,122 +146,146 @@ export default function Home() {
 
   const activeClinic = clinics.find((c) => c.id === activeClinicId);
 
+  if (authLoading || dataLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-500 text-sm">読み込み中...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white">
+      {showMigration && (
+        <LocalDataMigration onComplete={() => { setShowMigration(false); refreshState(); }} />
+      )}
       {/* ヘッダー */}
-      <header className="bg-gradient-to-r from-orange-600 via-orange-500 to-amber-500 shadow-lg">
+      <header className="bg-gradient-to-r from-slate-800 via-slate-700 to-blue-800 shadow-lg border-b border-slate-600/20">
         <div className="max-w-5xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                <span className="text-white text-xl font-black">M</span>
+              <div className="w-10 h-10 bg-blue-500/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-blue-400/30">
+                <span className="text-blue-300 text-xl font-black">M</span>
               </div>
               <div>
                 <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
                   MEO勝ち上げくん
                 </h1>
-                <p className="text-xs text-orange-100 mt-0.5">
-                  治療院のMEO対策を完全サポート
+                <p className="text-xs text-blue-200/80 mt-0.5">
+                  MEO + LLMO コンテンツ一括生成 for Business
                 </p>
               </div>
             </div>
 
-            {/* 院切り替えボタン */}
-            {clinics.length > 0 && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowClinicSwitcher(!showClinicSwitcher)}
-                  className="flex items-center gap-2 px-3 py-2 bg-white/15 backdrop-blur-sm border border-white/20 rounded-lg hover:bg-white/25 transition-colors"
-                >
-                  <div className="w-8 h-8 rounded-full bg-white text-orange-600 flex items-center justify-center text-sm font-bold">
-                    {activeClinic?.name?.charAt(0) || "?"}
-                  </div>
-                  <div className="text-left hidden sm:block">
-                    <p className="text-sm font-medium text-white leading-tight">
-                      {activeClinic?.name || "未選択"}
-                    </p>
-                    <p className="text-xs text-orange-100 leading-tight">
-                      {activeClinic?.area}
-                      {hasWordPress && " / WP連携済"}
-                    </p>
-                  </div>
-                  <svg className="w-4 h-4 text-orange-100" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {/* ドロップダウン */}
-                {showClinicSwitcher && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowClinicSwitcher(false)} />
-                    <div className="absolute right-0 top-full mt-1 w-64 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
-                      <div className="p-2">
-                        <p className="text-xs text-gray-400 px-2 py-1 font-medium">院を切り替え</p>
-                        {clinics.map((c) => (
-                          <button
-                            key={c.id}
-                            onClick={() => switchClinic(c.id)}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                              c.id === activeClinicId
-                                ? "bg-orange-50 border border-orange-200"
-                                : "hover:bg-gray-50"
-                            }`}
-                          >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                              c.id === activeClinicId
-                                ? "bg-orange-600 text-white"
-                                : "bg-gray-200 text-gray-600"
-                            }`}>
-                              {c.name.charAt(0)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-800 truncate">{c.name}</p>
-                              <p className="text-xs text-gray-400 truncate">
-                                {c.area} / {c.category}
-                                {c.wordpress?.siteUrl && " / WP"}
-                              </p>
-                            </div>
-                            {c.id === activeClinicId && (
-                              <span className="text-orange-600 text-xs font-medium">使用中</span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="border-t border-gray-100 p-2">
-                        <button
-                          onClick={() => {
-                            setShowClinicSwitcher(false);
-                            setTab("settings");
-                          }}
-                          className="w-full px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg text-left font-medium"
-                        >
-                          + 新しい院を追加
-                        </button>
-                      </div>
+            <div className="flex items-center gap-3">
+              {/* 院切り替えボタン */}
+              {clinics.length > 0 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowClinicSwitcher(!showClinicSwitcher)}
+                    className="flex items-center gap-2 px-3 py-2 bg-white/10 backdrop-blur-sm border border-white/15 rounded-lg hover:bg-white/20 transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold">
+                      {activeClinic?.name?.charAt(0) || "?"}
                     </div>
-                  </>
-                )}
-              </div>
-            )}
+                    <div className="text-left hidden sm:block">
+                      <p className="text-sm font-medium text-white leading-tight">
+                        {activeClinic?.name || "未選択"}
+                      </p>
+                      <p className="text-xs text-blue-200/70 leading-tight">
+                        {activeClinic?.area}
+                        {hasWordPress && " / WP連携済"}
+                      </p>
+                    </div>
+                    <svg className="w-4 h-4 text-blue-200/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {/* ドロップダウン */}
+                  {showClinicSwitcher && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowClinicSwitcher(false)} />
+                      <div className="absolute right-0 top-full mt-1 w-64 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
+                        <div className="p-2">
+                          <p className="text-xs text-gray-400 px-2 py-1 font-medium">院を切り替え</p>
+                          {clinics.map((c) => (
+                            <button
+                              key={c.id}
+                              onClick={() => switchClinic(c.id)}
+                              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                                c.id === activeClinicId
+                                  ? "bg-blue-50 border border-blue-200"
+                                  : "hover:bg-gray-50"
+                              }`}
+                            >
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                                c.id === activeClinicId
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-200 text-gray-600"
+                              }`}>
+                                {c.name.charAt(0)}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{c.name}</p>
+                                <p className="text-xs text-gray-400 truncate">
+                                  {c.area} / {c.category}
+                                  {c.wordpress?.siteUrl && " / WP"}
+                                </p>
+                              </div>
+                              {c.id === activeClinicId && (
+                                <span className="text-blue-600 text-xs font-medium">使用中</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="border-t border-gray-100 p-2">
+                          <button
+                            onClick={() => {
+                              setShowClinicSwitcher(false);
+                              setTab("settings");
+                            }}
+                            className="w-full px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg text-left font-medium"
+                          >
+                            + 新しい院を追加
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ログアウトボタン */}
+              <button
+                onClick={signOut}
+                className="px-3 py-2 text-xs text-blue-200/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+              >
+                ログアウト
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       {/* タブ */}
       <div className="max-w-5xl mx-auto px-4 pt-4">
-        <div className="flex gap-1 bg-white rounded-xl p-1.5 shadow-sm overflow-x-auto scrollbar-hide" style={{ WebkitOverflowScrolling: "touch" }}>
+        <div className="flex gap-1 bg-white rounded-xl p-1.5 shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide" style={{ WebkitOverflowScrolling: "touch" }}>
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1 py-2 px-2.5 sm:px-3 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
+              className={`flex items-center gap-1.5 py-2.5 px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
                 tab === t.key
-                  ? "bg-orange-600 text-white shadow-sm"
+                  ? "bg-blue-600 text-white shadow-sm"
                   : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
               }`}
             >
-              <span className="text-sm sm:text-base">{t.icon}</span>
-              <span className="hidden sm:inline">{t.label}</span>
+              <span className="text-base">{t.icon}</span>
+              <span>{t.label}</span>
             </button>
           ))}
         </div>
@@ -234,112 +294,64 @@ export default function Home() {
       {/* コンテンツ */}
       <main className="max-w-5xl mx-auto px-4 py-6">
         {tab === "dashboard" && (
-          <DashboardTab
-            profile={profile}
-            activeClinic={activeClinic}
-            hasWordPress={hasWordPress}
-            onNavigate={setTab}
-          />
-        )}
-
-        {tab === "tasks" && <TaskManager />}
-
-        {tab === "bulk" && <BulkGenerator profile={profile} />}
-
-        {tab === "ranking" && <RankingChecker profile={profile} />}
-
-        {tab === "checklist" && <ChecklistTab />}
-
-        {tab === "note" && <ContentGenerator profile={profile} type="note" />}
-
-        {tab === "gbp" && <ContentGenerator profile={profile} type="gbp" />}
-
-        {tab === "gbp-image" && <GbpImageGenerator profile={profile} />}
-
-        {tab === "llmo" && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-2">
-                LLMO（大規模言語モデル最適化）とは？
-              </h2>
-              <p className="text-sm text-gray-600 mb-4">
-                ChatGPTやGeminiなどのAI検索で「{profile.area || "○○"}でおすすめの
-                {profile.category || "整体院"}は？」と聞かれたときに、あなたの院が回答に含まれるようにする対策です。
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 bg-purple-50 rounded-lg">
-                  <h4 className="font-medium text-purple-800 text-sm mb-1">FAQ生成</h4>
-                  <p className="text-xs text-purple-600">AI検索で引用されやすいQ&A形式のコンテンツを生成</p>
-                </div>
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <h4 className="font-medium text-blue-800 text-sm mb-1">構造化データ</h4>
-                  <p className="text-xs text-blue-600">Schema.org準拠のJSON-LDでAIが理解しやすい情報構造に</p>
-                </div>
-                <div className="p-4 bg-green-50 rounded-lg">
-                  <h4 className="font-medium text-green-800 text-sm mb-1">E-E-A-T強化</h4>
-                  <p className="text-xs text-green-600">経験・専門性・権威性・信頼性をコンテンツに反映</p>
-                </div>
-              </div>
-            </div>
-            <ContentGenerator profile={profile} type="faq" />
-            <ContentGenerator profile={profile} type="faq-short" />
-            <ContentGenerator profile={profile} type="structured-data" />
+          <div className="space-y-8">
+            <DashboardTab
+              profile={profile}
+              activeClinic={activeClinic}
+              hasWordPress={hasWordPress}
+              onNavigate={setTab}
+            />
+            <AnalyticsDashboard />
           </div>
         )}
 
-        {tab === "wordpress" && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-2">WordPress投稿</h2>
-              <p className="text-sm text-gray-600 mb-4">
-                SEO・LLMO最適化されたブログ記事やFAQを生成し、WordPressに投稿できます。
-              </p>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                <p className="text-xs text-blue-700">
-                  ブログ記事はWordPressに直接投稿されます。FAQ（よくある質問）やSEO/OGP設定は、WordPressの環境によって自動投稿できない場合があります。その場合はコピー用のデータが表示されます。
-                </p>
-              </div>
-              {!hasWordPress && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                  <p className="text-xs text-yellow-700">
-                    「設定」タブでWordPress接続情報を入力してください。
-                  </p>
-                  <button onClick={() => setTab("settings")} className="mt-2 px-4 py-2 bg-yellow-600 text-white rounded-lg text-xs font-medium hover:bg-yellow-700">
-                    設定画面へ
-                  </button>
-                </div>
-              )}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-                  <h4 className="font-medium text-blue-800 text-sm mb-1">ブログ記事</h4>
-                  <p className="text-xs text-blue-600">症状別の詳細ブログ記事（HTML形式・SEO最適化済み）</p>
-                </div>
-                <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
-                  <h4 className="font-medium text-purple-800 text-sm mb-1">SEO情報一括生成</h4>
-                  <p className="text-xs text-purple-600">タイトル・メタディスクリプション・OGP・スラッグを一括生成</p>
-                </div>
-                <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-                  <h4 className="font-medium text-green-800 text-sm mb-1">note記事も投稿可</h4>
-                  <p className="text-xs text-green-600">note記事タブで生成した記事もWordPressに投稿できます</p>
-                </div>
-              </div>
+        {tab === "bulk" && (
+          <div className="space-y-4">
+            <div className="flex gap-1 bg-white rounded-xl p-1.5 shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide" style={{ WebkitOverflowScrolling: "touch" }}>
+              {CONTENT_SUB_TABS.map((st) => (
+                <button
+                  key={st.key}
+                  onClick={() => setContentSubTab(st.key)}
+                  className={`flex items-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex-shrink-0 ${
+                    contentSubTab === st.key
+                      ? "bg-blue-50 text-blue-700 border border-blue-200"
+                      : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                  }`}
+                >
+                  <span>{st.icon}</span>
+                  <span>{st.label}</span>
+                </button>
+              ))}
             </div>
-            <ContentGenerator profile={profile} type="blog" />
-            <ContentGenerator profile={profile} type="blog-seo" />
+
+            <div style={{ display: contentSubTab === "bulk" ? "block" : "none" }}>
+              <BulkGenerator profile={profile} />
+            </div>
+            {contentSubTab === "faq" && <ContentGenerator profile={profile} type="faq" />}
+            {contentSubTab === "blog" && <ContentGenerator profile={profile} type="blog" />}
+            {contentSubTab === "gbp" && <ContentGenerator profile={profile} type="gbp" />}
+            {contentSubTab === "review" && <ReviewReplyGenerator profile={profile} />}
+            {contentSubTab === "image" && <GbpImageGenerator profile={profile} />}
+            {contentSubTab === "note" && <ContentGenerator profile={profile} type="note" />}
+          </div>
+        )}
+
+        {tab === "checklist" && <ChecklistTab />}
+
+        {tab === "ranking" && (
+          <div className="space-y-8">
+            <SearchConsolePanel profile={profile} onKeywordsImport={handleKeywordsImport} />
+            <RankingChecker profile={profile} />
           </div>
         )}
 
         {tab === "history" && <HistoryTab />}
 
-        {tab === "calendar" && <ContentCalendar />}
-
-        {tab === "analytics" && <AnalyticsDashboard />}
-
         {tab === "settings" && (
           <SettingsTab
             clinics={clinics}
             activeClinicId={activeClinicId}
-            anthropicKey={getSettings().anthropicKey}
+            anthropicKey={profile.anthropicKey}
             onAddClinic={handleAddClinic}
             onUpdateClinic={handleUpdateClinic}
             onDeleteClinic={handleDeleteClinic}
@@ -353,7 +365,7 @@ export default function Home() {
 }
 
 // ─── 概要ダッシュボードタブ ──────────────────────
-const PIE_COLORS = ["#f97316", "#3b82f6", "#10b981", "#8b5cf6", "#06b6d4", "#ec4899", "#6366f1"];
+const PIE_COLORS = ["#3b82f6", "#6366f1", "#10b981", "#0ea5e9", "#8b5cf6", "#14b8a6", "#475569"];
 
 const TYPE_LABELS: Record<string, string> = {
   blog: "ブログ",
@@ -379,7 +391,7 @@ function DashboardTab({
   const [contents, setContents] = useState<GeneratedContent[]>([]);
 
   useEffect(() => {
-    setContents(getContents());
+    getContents().then(setContents);
   }, []);
 
   const stats = useMemo(() => {
@@ -404,26 +416,25 @@ function DashboardTab({
   }, [contents]);
 
   const statCards = [
-    { label: "note記事", count: stats.noteCount, color: "orange", icon: "📝" },
-    { label: "GBP投稿", count: stats.gbpCount, color: "red", icon: "📍" },
-    { label: "FAQ", count: stats.faqCount, color: "green", icon: "💬" },
-    { label: "ブログ", count: stats.blogCount, color: "blue", icon: "📄" },
+    { label: "note記事", count: stats.noteCount, color: "slate", icon: "📝" },
+    { label: "GBP投稿", count: stats.gbpCount, color: "blue", icon: "📍" },
+    { label: "FAQ", count: stats.faqCount, color: "emerald", icon: "💬" },
+    { label: "ブログ", count: stats.blogCount, color: "indigo", icon: "📄" },
   ];
 
   const colorMap: Record<string, { bg: string; text: string; border: string }> = {
-    orange: { bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200" },
-    red: { bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
-    green: { bg: "bg-green-50", text: "text-green-700", border: "border-green-200" },
+    slate: { bg: "bg-slate-50", text: "text-slate-700", border: "border-slate-200" },
     blue: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
+    emerald: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
+    indigo: { bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
   };
 
   return (
     <div className="space-y-6">
-      {/* 院情報サマリ */}
       {activeClinic && (
         <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center text-2xl font-bold flex-shrink-0">
+            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-600 to-blue-500 text-white flex items-center justify-center text-2xl font-bold flex-shrink-0">
               {activeClinic.name.charAt(0)}
             </div>
             <div className="flex-1 min-w-0">
@@ -434,7 +445,7 @@ function DashboardTab({
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
                 {activeClinic.keywords.slice(0, 5).map((kw) => (
-                  <span key={kw} className="text-[11px] px-2 py-0.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100">
+                  <span key={kw} className="text-[11px] px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full border border-blue-100">
                     {kw}
                   </span>
                 ))}
@@ -449,15 +460,11 @@ function DashboardTab({
         </div>
       )}
 
-      {/* 生成総数 + クイック統計 */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {statCards.map((card) => {
           const c = colorMap[card.color];
           return (
-            <div
-              key={card.label}
-              className={`${c.bg} rounded-xl p-4 border ${c.border}`}
-            >
+            <div key={card.label} className={`${c.bg} rounded-xl p-4 border ${c.border}`}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-2xl">{card.icon}</span>
                 <span className={`text-2xl font-bold ${c.text}`}>{card.count}</span>
@@ -468,7 +475,6 @@ function DashboardTab({
         })}
       </div>
 
-      {/* 全体統計カード */}
       <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-base font-bold text-gray-800">コンテンツ生成状況</h3>
@@ -480,60 +486,40 @@ function DashboardTab({
             <p className="text-gray-400 text-sm mb-4">まだコンテンツが生成されていません</p>
             <button
               onClick={() => onNavigate("bulk")}
-              className="px-5 py-2.5 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 transition-colors"
+              className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
             >
-              一括生成を始める
+              コンテンツ生成を始める
             </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-            {/* 円グラフ */}
             <div className="flex flex-col items-center">
               <p className="text-xs text-gray-400 mb-2">タイプ別内訳</p>
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
-                  <Pie
-                    data={stats.pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={85}
-                    paddingAngle={3}
-                    dataKey="value"
-                    stroke="none"
-                  >
+                  <Pie data={stats.pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={3} dataKey="value" stroke="none">
                     {stats.pieData.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip
-                    formatter={(value, name) => [`${value}件`, name]}
-                    contentStyle={{ borderRadius: "8px", fontSize: "12px", border: "1px solid #e5e7eb" }}
-                  />
+                  <Tooltip formatter={(value, name) => [`${value}件`, name]} contentStyle={{ borderRadius: "8px", fontSize: "12px", border: "1px solid #e5e7eb" }} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex flex-wrap gap-2 justify-center mt-1">
                 {stats.pieData.map((entry, index) => (
                   <div key={entry.name} className="flex items-center gap-1">
-                    <div
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}
-                    />
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
                     <span className="text-[11px] text-gray-500">{entry.name} ({entry.value})</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* 最近の生成履歴 */}
             <div>
               <p className="text-xs text-gray-400 mb-3">最近の生成</p>
               <div className="space-y-2">
                 {stats.recent.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                  >
+                  <div key={item.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                     <TypeBadge type={item.type} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-700 truncate">{item.title}</p>
@@ -546,10 +532,7 @@ function DashboardTab({
                 ))}
               </div>
               {stats.total > 5 && (
-                <button
-                  onClick={() => onNavigate("history")}
-                  className="mt-3 text-xs text-orange-600 font-medium hover:text-orange-700"
-                >
+                <button onClick={() => onNavigate("history")} className="mt-3 text-xs text-blue-600 font-medium hover:text-blue-700">
                   すべての履歴を見る →
                 </button>
               )}
@@ -558,21 +541,15 @@ function DashboardTab({
         )}
       </div>
 
-      {/* クイックアクション */}
       <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
         <h3 className="text-base font-bold text-gray-800 mb-4">クイックアクション</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {[
-            { label: "一括生成", icon: "⚡", tab: "bulk" as Tab, color: "bg-amber-50 text-amber-700 border-amber-200" },
-            { label: "note記事", icon: "📝", tab: "note" as Tab, color: "bg-orange-50 text-orange-700 border-orange-200" },
-            { label: "GBP投稿", icon: "📍", tab: "gbp" as Tab, color: "bg-red-50 text-red-700 border-red-200" },
-            { label: "施策リスト", icon: "📋", tab: "checklist" as Tab, color: "bg-green-50 text-green-700 border-green-200" },
+            { label: "コンテンツ生成", icon: "⚡", tab: "bulk" as Tab, color: "bg-blue-50 text-blue-700 border-blue-200" },
+            { label: "順位チェック", icon: "🔍", tab: "ranking" as Tab, color: "bg-slate-50 text-slate-700 border-slate-200" },
+            { label: "生成履歴", icon: "📜", tab: "history" as Tab, color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
           ].map((action) => (
-            <button
-              key={action.label}
-              onClick={() => onNavigate(action.tab)}
-              className={`p-4 rounded-xl border text-center hover:shadow-md transition-all ${action.color}`}
-            >
+            <button key={action.label} onClick={() => onNavigate(action.tab)} className={`p-4 rounded-xl border text-center hover:shadow-md transition-all ${action.color}`}>
               <span className="text-2xl block mb-1">{action.icon}</span>
               <span className="text-xs font-medium">{action.label}</span>
             </button>
@@ -583,7 +560,6 @@ function DashboardTab({
   );
 }
 
-// ─── タイプバッジ共通コンポーネント ─────────────────
 function TypeBadge({ type }: { type: string }) {
   const map: Record<string, { label: string; cls: string }> = {
     blog: { label: "ブログ", cls: "bg-blue-100 text-blue-700" },
@@ -593,6 +569,7 @@ function TypeBadge({ type }: { type: string }) {
     "faq-short": { label: "FAQ短", cls: "bg-teal-100 text-teal-700" },
     "blog-seo": { label: "SEO", cls: "bg-purple-100 text-purple-700" },
     "structured-data": { label: "構造化", cls: "bg-indigo-100 text-indigo-700" },
+    "review-reply": { label: "口コミ返信", cls: "bg-yellow-100 text-yellow-700" },
   };
   const info = map[type] || { label: type, cls: "bg-gray-100 text-gray-700" };
   return (
@@ -602,7 +579,6 @@ function TypeBadge({ type }: { type: string }) {
   );
 }
 
-// ─── 履歴タブ（インライン）──────────────────────
 function HistoryTab() {
   const [items, setItems] = useState<GeneratedContent[]>([]);
   const [filter, setFilter] = useState<string>("all");
@@ -610,7 +586,7 @@ function HistoryTab() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
-    setItems(getContents());
+    getContents().then(setItems);
   }, []);
 
   const filtered = filter === "all" ? items : items.filter((i) => i.type === filter);
@@ -626,7 +602,6 @@ function HistoryTab() {
       <div className="bg-white rounded-xl shadow-sm p-6">
         <h2 className="text-lg font-bold text-gray-800 mb-4">生成コンテンツ履歴</h2>
 
-        {/* Filter buttons */}
         <div className="flex gap-2 mb-4 flex-wrap">
           {[
             { key: "all", label: "すべて" },
@@ -639,9 +614,7 @@ function HistoryTab() {
               key={f.key}
               onClick={() => setFilter(f.key)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                filter === f.key
-                  ? "bg-orange-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                filter === f.key ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               {f.label}
@@ -657,34 +630,19 @@ function HistoryTab() {
           <div className="space-y-3">
             {filtered.map((item) => (
               <div key={item.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                {/* Header row */}
                 <button
                   onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
                   className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
                 >
                   <TypeBadge type={item.type} />
-                  <span className="text-xs text-gray-500 bg-gray-50 px-2 py-0.5 rounded">
-                    {item.keyword}
-                  </span>
-                  <span className="text-sm font-medium text-gray-800 flex-1 truncate">
-                    {item.title}
-                  </span>
-                  <span className="text-xs text-gray-400 flex-shrink-0">
-                    {new Date(item.createdAt).toLocaleDateString("ja-JP")}
-                  </span>
-                  <svg
-                    className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${
-                      expandedId === item.id ? "rotate-180" : ""
-                    }`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
+                  <span className="text-xs text-gray-500 bg-gray-50 px-2 py-0.5 rounded">{item.keyword}</span>
+                  <span className="text-sm font-medium text-gray-800 flex-1 truncate">{item.title}</span>
+                  <span className="text-xs text-gray-400 flex-shrink-0">{new Date(item.createdAt).toLocaleDateString("ja-JP")}</span>
+                  <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${expandedId === item.id ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
 
-                {/* Preview text (collapsed) */}
                 {expandedId !== item.id && (
                   <div className="px-4 pb-3">
                     <p className="text-xs text-gray-500 line-clamp-2">
@@ -693,27 +651,19 @@ function HistoryTab() {
                   </div>
                 )}
 
-                {/* Expanded content */}
                 {expandedId === item.id && (
                   <div className="px-4 pb-4 border-t border-gray-100">
                     <div className="flex items-center gap-2 mt-3 mb-3">
                       <button
                         onClick={() => handleCopy(item.id, item.content)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                          copiedId === item.id
-                            ? "bg-green-500 text-white"
-                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          copiedId === item.id ? "bg-green-500 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                         }`}
                       >
                         {copiedId === item.id ? "コピー完了" : "コピー"}
                       </button>
                       {item.wpPostUrl && (
-                        <a
-                          href={item.wpPostUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200"
-                        >
+                        <a href={item.wpPostUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200">
                           WordPress記事を見る
                         </a>
                       )}

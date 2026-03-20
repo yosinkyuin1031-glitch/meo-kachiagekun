@@ -13,11 +13,6 @@ export interface WordPressSettings {
   appPassword: string;
 }
 
-export interface NoteLoginSettings {
-  email: string;
-  password: string;
-}
-
 // 院の各種URL
 export interface ClinicUrls {
   websiteUrl?: string;        // ホームページURL
@@ -55,7 +50,6 @@ export interface ClinicProfile {
   ownerName?: string;         // 院長名
   specialty?: string;         // 専門分野（例: 腰痛・肩こり専門）
   noteProfile?: NoteProfile;  // noteプロフィール設定
-  noteLogin?: NoteLoginSettings; // noteログイン情報
   urls?: ClinicUrls;
   wordpress?: WordPressSettings;
 }
@@ -77,12 +71,11 @@ export interface BusinessProfile {
   ownerName?: string;
   specialty?: string;
   noteProfile?: NoteProfile;
-  noteLogin?: NoteLoginSettings;
   urls?: ClinicUrls;
   wordpress?: WordPressSettings;
 }
 
-export type ContentType = "note" | "gbp" | "faq" | "faq-short" | "blog" | "blog-seo" | "structured-data";
+export type ContentType = "note" | "gbp" | "faq" | "faq-short" | "blog" | "blog-seo" | "structured-data" | "review-reply";
 
 export interface GeneratedContent {
   id: string;
@@ -97,16 +90,34 @@ export interface GeneratedContent {
   notePostUrl?: string;
 }
 
-// Google Business Profile API連携
-export interface GoogleSettings {
+// Google Search Console連携
+export interface SearchConsoleSettings {
   clientId: string;
   clientSecret: string;
   accessToken?: string;
   refreshToken?: string;
   tokenExpiry?: string;
-  accountId?: string;      // accounts/{id}
-  locationId?: string;     // locations/{id}
-  locationName?: string;   // 表示用のビジネス名
+  siteUrl?: string;       // 連携対象サイトURL
+  siteName?: string;       // 表示用
+}
+
+export interface SearchConsoleQuery {
+  query: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+// GBP投稿用の素材画像
+export type ImageCategory = "施術風景" | "院内風景" | "スタッフ" | "外観" | "その他";
+
+export interface GbpMaterialImage {
+  id: string;
+  category: ImageCategory;
+  dataUrl: string;       // base64 data URL (リサイズ済み)
+  name: string;
+  addedAt: string;
 }
 
 export interface GenerationFeedback {
@@ -117,25 +128,4 @@ export interface GenerationFeedback {
   editedContent?: string;
   note?: string;
   createdAt: string;
-}
-
-// タスク管理
-export type TaskType = "approval" | "owner-task";
-export type TaskStatus = "pending" | "in-progress" | "completed";
-export type TaskPriority = "high" | "medium" | "low";
-export type TaskCategory = "経営判断" | "契約・支払い" | "スタッフ管理" | "集客・広告" | "施術・技術" | "設備・備品" | "その他";
-
-export interface Task {
-  id: string;
-  type: TaskType;
-  title: string;
-  description: string;
-  category: TaskCategory;
-  priority: TaskPriority;
-  status: TaskStatus;
-  dueDate?: string;
-  requestedBy?: string;
-  createdAt: string;
-  completedAt?: string;
-  memo?: string;
 }

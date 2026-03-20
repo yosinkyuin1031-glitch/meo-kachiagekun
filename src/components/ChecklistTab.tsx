@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { ChecklistItem } from "@/lib/types";
-import { getChecklist, saveChecklist } from "@/lib/storage";
+import { getChecklist, saveChecklist } from "@/lib/supabase-storage";
 
 const CATEGORY_ICONS: Record<string, string> = {
   "GBP最適化": "📍",
@@ -33,15 +33,15 @@ export default function ChecklistTab() {
   const [filter, setFilter] = useState<string>("all");
 
   useEffect(() => {
-    setItems(getChecklist());
+    getChecklist().then(setItems);
   }, []);
 
-  const toggleItem = (id: string) => {
+  const toggleItem = async (id: string) => {
     const updated = items.map((item) =>
       item.id === id ? { ...item, completed: !item.completed } : item
     );
     setItems(updated);
-    saveChecklist(updated);
+    await saveChecklist(updated);
   };
 
   const categories = [...new Set(items.map((i) => i.category))];

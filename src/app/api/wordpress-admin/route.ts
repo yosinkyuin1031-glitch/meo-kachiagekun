@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
-export const runtime = "nodejs";
-export const preferredRegion = "hnd1";
+export const maxDuration = 60;
 
 /**
  * WordPress管理画面のフォーム送信をシミュレートして
@@ -166,6 +166,12 @@ async function createPostViaAdmin(
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
+    }
+
     const body: AdminPostRequest = await request.json();
     const { siteUrl, username, appPassword, title, content, postType } = body;
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { createClient } from "@/lib/supabase/server";
 
 // モデルフォールバック（順番に試す）
 const MODEL_CANDIDATES = [
@@ -19,14 +20,26 @@ const MAX_TOKENS_MAP: Record<string, number> = {
   "structured-data": 4000,
 };
 
-// APIキーを取得：環境変数を最優先、なければリクエストのキーを使用
-function resolveApiKey(requestKey?: string): string {
+// APIキーを取得：環境変数 → DB → リクエストの順
+async function resolveApiKey(requestKey?: string, userId?: string): Promise<string> {
   // 環境変数を最優先
   const envKey = process.env.ANTHROPIC_API_KEY;
   if (envKey && envKey.trim().length > 50) {
     return envKey.trim();
   }
-  // 環境変数がなければリクエストのキーを使う
+  // DBからユーザーのAPIキーを取得
+  if (userId) {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("meo_user_settings")
+      .select("anthropic_key")
+      .eq("user_id", userId)
+      .single();
+    if (data?.anthropic_key && data.anthropic_key.trim().length > 50) {
+      return data.anthropic_key.trim();
+    }
+  }
+  // リクエストのキーをフォールバック
   if (requestKey && requestKey.trim().length > 50) {
     return requestKey.trim();
   }
@@ -50,9 +63,15 @@ async function tryGenerate(
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
+    }
+
     const { apiKey, prompt, type } = await request.json();
 
-    const resolvedKey = resolveApiKey(apiKey);
+    const resolvedKey = await resolveApiKey(apiKey, user.id);
     if (!resolvedKey) {
       return NextResponse.json(
         { error: "APIキーが設定されていません。設定画面で入力するか、管理者に連絡してください。" },
@@ -136,8 +155,14 @@ export async function POST(request: NextRequest) {
 // APIキー接続テスト用
 export async function PUT(request: NextRequest) {
   try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ valid: false, error: "認証が必要です" }, { status: 401 });
+    }
+
     const { apiKey } = await request.json();
-    const resolvedKey = resolveApiKey(apiKey);
+    const resolvedKey = await resolveApiKey(apiKey, user.id);
 
     if (!resolvedKey) {
       return NextResponse.json({ valid: false, error: "APIキーが見つかりません" }, { status: 400 });

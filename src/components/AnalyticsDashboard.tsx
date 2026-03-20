@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { GeneratedContent, ContentType, ChecklistItem } from "@/lib/types";
-import { getContents, getChecklist, getActiveClinic } from "@/lib/storage";
+import { GeneratedContent, ContentType } from "@/lib/types";
+import { getContents, getActiveClinic } from "@/lib/supabase-storage";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell,
@@ -22,23 +22,12 @@ const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   blog: "ブログ",
   "blog-seo": "SEOブログ",
   "structured-data": "構造化データ",
+  "review-reply": "口コミ返信",
 };
 
 const CHART_COLORS = [
   "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6",
 ];
-
-const CATEGORY_ICONS: Record<string, string> = {
-  "GBP最適化": "📍",
-  "写真・動画": "📷",
-  "口コミ戦略": "⭐",
-  "GBP投稿": "📝",
-  "サイテーション": "🔗",
-  "ウェブサイト": "🌐",
-  "外部施策": "📣",
-  "LLMO対策": "🤖",
-  "WordPress投稿": "📄",
-};
 
 const KEYWORD_SUGGESTIONS: Record<string, string[]> = {
   "整体院": ["腰痛", "肩こり", "骨盤矯正", "猫背矯正", "頭痛", "姿勢改善", "産後骨盤", "ぎっくり腰", "坐骨神経痛", "自律神経"],
@@ -46,33 +35,6 @@ const KEYWORD_SUGGESTIONS: Record<string, string[]> = {
   "接骨院": ["骨折", "捻挫", "打撲", "交通事故", "スポーツ外傷", "腰痛", "肩こり", "むちうち", "リハビリ", "膝痛"],
   "カイロプラクティック": ["骨盤矯正", "背骨矯正", "姿勢改善", "頭痛", "肩こり", "腰痛", "猫背", "ストレートネック", "自律神経", "産後ケア"],
 };
-
-// ─── CircularProgress コンポーネント ─────────────
-
-function CircularProgress({ score, size = 140 }: { score: number; size?: number }) {
-  const strokeWidth = 10;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (score / 100) * circumference;
-  const color = score >= 80 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
-
-  return (
-    <div className="relative inline-flex items-center justify-center">
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth}
-          fill="none" stroke="#e5e7eb" />
-        <circle cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth}
-          fill="none" stroke={color} strokeLinecap="round"
-          strokeDasharray={circumference} strokeDashoffset={offset}
-          className="transition-all duration-700 ease-out" />
-      </svg>
-      <div className="absolute flex flex-col items-center">
-        <span className="text-3xl font-bold" style={{ color }}>{score}</span>
-        <span className="text-xs text-gray-500">/ 100</span>
-      </div>
-    </div>
-  );
-}
 
 // ─── TagCloud コンポーネント ────────────────────
 
@@ -107,14 +69,15 @@ function TagCloud({ keywords }: { keywords: { word: string; count: number }[] })
 
 export default function AnalyticsDashboard() {
   const [contents, setContents] = useState<GeneratedContent[]>([]);
-  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [clinicCategory, setClinicCategory] = useState("整体院");
+  const [clinicName, setClinicName] = useState("院");
 
   useEffect(() => {
-    setContents(getContents());
-    setChecklist(getChecklist());
-    const clinic = getActiveClinic();
-    if (clinic?.category) setClinicCategory(clinic.category);
+    getContents().then(setContents);
+    getActiveClinic().then((clinic) => {
+      if (clinic?.category) setClinicCategory(clinic.category);
+      if (clinic?.name) setClinicName(clinic.name);
+    });
   }, []);
 
   // ─── 生成コンテンツ統計 ─────────────────────
@@ -152,35 +115,6 @@ export default function AnalyticsDashboard() {
       { name: "未公開/下書き", value: draft },
     ];
   }, [contents]);
-
-  // ─── MEO施策スコア ─────────────────────────
-
-  const meoScore = useMemo(() => {
-    if (checklist.length === 0) return { overall: 0, categories: [] as { name: string; score: number; completed: number; total: number }[] };
-    const cats: Record<string, { completed: number; total: number }> = {};
-    checklist.forEach((item) => {
-      if (!cats[item.category]) cats[item.category] = { completed: 0, total: 0 };
-      cats[item.category].total++;
-      if (item.completed) cats[item.category].completed++;
-    });
-    const categories = Object.entries(cats).map(([name, data]) => ({
-      name,
-      score: Math.round((data.completed / data.total) * 100),
-      completed: data.completed,
-      total: data.total,
-    }));
-    const overall = Math.round(
-      (checklist.filter((i) => i.completed).length / checklist.length) * 100
-    );
-    return { overall, categories };
-  }, [checklist]);
-
-  const recommendations = useMemo(() => {
-    const incomplete = checklist.filter((i) => !i.completed);
-    const highPriority = incomplete.filter((i) => i.priority === "high");
-    const target = highPriority.length > 0 ? highPriority : incomplete;
-    return target.slice(0, 5);
-  }, [checklist]);
 
   // ─── キーワード分析 ─────────────────────────
 
@@ -237,7 +171,7 @@ export default function AnalyticsDashboard() {
       <div className="text-center">
         <h2 className="text-2xl font-bold text-gray-800">MEO パフォーマンス分析</h2>
         <p className="text-sm text-gray-500 mt-1">
-          {getActiveClinic()?.name || "院"} の MEO 施策状況を一覧で確認
+          {clinicName} の MEO 施策状況を一覧で確認
         </p>
       </div>
 
@@ -320,65 +254,7 @@ export default function AnalyticsDashboard() {
         )}
       </section>
 
-      {/* ═══ 2. MEO施策スコア ═══ */}
-      <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
-          <span className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center text-sm">🎯</span>
-          MEO施策スコア
-        </h3>
-
-        <div className="flex flex-col md:flex-row items-center gap-8">
-          {/* 円形スコア */}
-          <div className="flex-shrink-0 text-center">
-            <CircularProgress score={meoScore.overall} />
-            <p className="text-sm text-gray-500 mt-2">総合MEO準備スコア</p>
-          </div>
-
-          {/* カテゴリ別 */}
-          <div className="flex-1 w-full space-y-3">
-            {meoScore.categories.map((cat) => (
-              <div key={cat.name} className="flex items-center gap-3">
-                <span className="text-lg w-6 text-center">{CATEGORY_ICONS[cat.name] || "📋"}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="font-medium text-gray-700 truncate">{cat.name}</span>
-                    <span className="text-gray-500 flex-shrink-0">{cat.completed}/{cat.total}</span>
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2">
-                    <div className="h-2 rounded-full transition-all duration-500"
-                      style={{
-                        width: `${cat.score}%`,
-                        backgroundColor: cat.score >= 80 ? "#10b981" : cat.score >= 50 ? "#f59e0b" : "#ef4444",
-                      }} />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* 改善アドバイス */}
-        {recommendations.length > 0 && (
-          <div className="mt-6 bg-amber-50 rounded-xl p-4">
-            <h4 className="text-sm font-semibold text-amber-800 mb-2">優先改善ポイント</h4>
-            <ul className="space-y-2">
-              {recommendations.map((item) => (
-                <li key={item.id} className="flex items-start gap-2 text-sm text-amber-700">
-                  <span className="mt-0.5 flex-shrink-0">
-                    {item.priority === "high" ? "🔴" : item.priority === "medium" ? "🟡" : "⚪"}
-                  </span>
-                  <div>
-                    <span className="font-medium">{item.title}</span>
-                    <span className="text-amber-600 ml-1">- {item.description}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-
-      {/* ═══ 3. キーワード分析 ═══ */}
+      {/* ═══ 2. キーワード分析 ═══ */}
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
           <span className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center text-sm">🔍</span>
@@ -437,7 +313,7 @@ export default function AnalyticsDashboard() {
         )}
       </section>
 
-      {/* ═══ 4. 週間サマリー ═══ */}
+      {/* ═══ 3. 週間サマリー ═══ */}
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
           <span className="w-8 h-8 bg-sky-100 rounded-lg flex items-center justify-center text-sm">📅</span>

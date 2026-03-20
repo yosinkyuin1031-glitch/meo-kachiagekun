@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
-export const runtime = "nodejs";
-export const preferredRegion = "hnd1";
+export const maxDuration = 60;
 
 /**
  * WordPressメディアライブラリに画像をアップロード
  * base64画像 → WordPress media → 公開URLを返す
  */
 export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
+  }
+
   const { siteUrl, username, appPassword, imageBase64, filename } = await req.json();
 
   if (!siteUrl || !username || !appPassword || !imageBase64) {

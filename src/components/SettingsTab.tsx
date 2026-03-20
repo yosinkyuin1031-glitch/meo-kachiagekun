@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ClinicProfile, WordPressSettings, GoogleSettings, NoteProfile } from "@/lib/types";
-import { getGoogleSettings, saveGoogleSettings, clearGoogleSettings } from "@/lib/storage";
+import { ClinicProfile, WordPressSettings, NoteProfile } from "@/lib/types";
+import { getSerpApiKey, saveSerpApiKey } from "@/lib/supabase-storage";
 
 interface Props {
   clinics: ClinicProfile[];
@@ -31,6 +31,15 @@ export default function SettingsTab({
   const [keyError, setKeyError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(clinics.length === 0);
+
+  // SerpApi
+  const [serpApiKey, setSerpApiKey] = useState("");
+  const [showSerpKey, setShowSerpKey] = useState(false);
+  const [serpSaved, setSerpSaved] = useState(false);
+
+  useEffect(() => {
+    getSerpApiKey().then(setSerpApiKey);
+  }, []);
 
   const handleSaveApiKey = async () => {
     if (!apiKey.trim()) {
@@ -69,71 +78,125 @@ export default function SettingsTab({
     }
   };
 
+  const handleSaveSerpApiKey = async () => {
+    await saveSerpApiKey(serpApiKey.trim());
+    setSerpSaved(true);
+    setTimeout(() => setSerpSaved(false), 2000);
+  };
+
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
-      {/* APIキー（共通） */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <h3 className="font-bold text-gray-800 text-lg mb-4">APIキー（全院共通）</h3>
-        <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-          <label className="block text-sm font-medium text-purple-800 mb-1">
-            Anthropic APIキー
-          </label>
-          <div className="flex gap-2">
-            <input
-              type={showKey ? "text" : "password"}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-ant-..."
-              className="flex-1 px-4 py-2.5 border border-purple-200 rounded-lg text-sm font-mono bg-white outline-none focus:ring-2 focus:ring-purple-500"
-            />
-            <button
-              onClick={() => setShowKey(!showKey)}
-              className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg text-xs hover:bg-purple-200"
-            >
-              {showKey ? "隠す" : "表示"}
-            </button>
+      {/* AI設定（共通） */}
+      <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <h3 className="font-bold text-gray-800 text-lg mb-4">AI設定（全院共通）</h3>
+
+        {/* サーバー側APIキーのステータス表示 */}
+        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-sm font-medium text-blue-800">サーバー設定</span>
           </div>
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-xs text-purple-600">
-              <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className="underline">
-                Anthropic Console
-              </a>
-              で取得
-            </p>
-            <button
-              onClick={handleSaveApiKey}
-              disabled={keyStatus === "testing"}
-              className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                keyStatus === "valid" ? "bg-green-500 text-white"
-                : keyStatus === "saved" ? "bg-green-500 text-white"
-                : keyStatus === "invalid" ? "bg-red-500 text-white"
-                : keyStatus === "testing" ? "bg-yellow-500 text-white animate-pulse"
-                : "bg-purple-600 text-white hover:bg-purple-700"
-              }`}
-            >
-              {keyStatus === "testing" ? "接続テスト中..."
-                : keyStatus === "valid" ? "接続OK・保存済み"
-                : keyStatus === "saved" ? "保存済み"
-                : keyStatus === "invalid" ? "再試行"
-                : "保存＆接続テスト"}
-            </button>
-          </div>
+          <p className="text-xs text-blue-700">
+            Anthropic APIキーはサーバー側の環境変数で管理されています。
+            BtoB運用では管理者がサーバーで一括管理するため、個別のキー入力は不要です。
+          </p>
+          <button
+            onClick={async () => {
+              setKeyStatus("testing");
+              setKeyError("");
+              try {
+                const res = await fetch("/api/generate", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({}),
+                });
+                const data = await res.json();
+                if (data.valid) {
+                  setKeyStatus("valid");
+                  setTimeout(() => setKeyStatus("idle"), 3000);
+                } else {
+                  setKeyStatus("invalid");
+                  setKeyError(data.error || "サーバーAPIキーが未設定または無効です");
+                }
+              } catch {
+                setKeyStatus("invalid");
+                setKeyError("接続テストに失敗しました");
+              }
+            }}
+            disabled={keyStatus === "testing"}
+            className={`mt-3 px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              keyStatus === "valid" ? "bg-green-500 text-white"
+              : keyStatus === "invalid" ? "bg-red-500 text-white"
+              : keyStatus === "testing" ? "bg-yellow-500 text-white animate-pulse"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+            }`}
+          >
+            {keyStatus === "testing" ? "接続テスト中..."
+              : keyStatus === "valid" ? "接続OK"
+              : keyStatus === "invalid" ? "再テスト"
+              : "接続テスト"}
+          </button>
           {keyStatus === "invalid" && keyError && (
-            <p className="text-xs text-red-600 mt-1.5 bg-red-50 px-3 py-1.5 rounded">{keyError}</p>
+            <p className="text-xs text-red-600 mt-2 bg-red-50 px-3 py-1.5 rounded">{keyError}</p>
           )}
           {keyStatus === "valid" && (
-            <p className="text-xs text-green-600 mt-1.5 bg-green-50 px-3 py-1.5 rounded">APIキーの接続を確認しました</p>
+            <p className="text-xs text-green-600 mt-2 bg-green-50 px-3 py-1.5 rounded">サーバーAPIキーの接続を確認しました</p>
           )}
         </div>
+
+        {/* 予備：個別APIキー入力（折りたたみ） */}
+        <details className="group">
+          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600 select-none">
+            詳細設定（個別APIキーを使用する場合）
+          </summary>
+          <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Anthropic APIキー（個別設定・オプション）
+            </label>
+            <p className="text-xs text-gray-400 mb-2">
+              サーバーのキーが使えない場合のフォールバック用です。通常は空欄のままでOKです。
+            </p>
+            <div className="flex gap-2">
+              <input
+                type={showKey ? "text" : "password"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="sk-ant-..."
+                className="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-mono bg-white outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={() => setShowKey(!showKey)}
+                className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs hover:bg-gray-200"
+              >
+                {showKey ? "隠す" : "表示"}
+              </button>
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs text-gray-400">
+                <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
+                  Anthropic Console
+                </a>
+                で取得
+              </p>
+              <button
+                onClick={handleSaveApiKey}
+                disabled={keyStatus === "testing"}
+                className="px-4 py-1.5 rounded-lg text-xs font-medium bg-gray-600 text-white hover:bg-gray-700"
+              >
+                保存＆テスト
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
 
       {/* 院一覧 */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
+      <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-gray-800 text-lg">登録院</h3>
           <button
             onClick={() => { setShowAddForm(true); setEditingId(null); }}
-            className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
           >
             + 院を追加
           </button>
@@ -144,7 +207,7 @@ export default function SettingsTab({
             <p className="text-gray-500 text-sm mb-3">まだ院が登録されていません</p>
             <button
               onClick={() => setShowAddForm(true)}
-              className="px-6 py-3 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700"
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
             >
               最初の院を登録する
             </button>
@@ -168,7 +231,7 @@ export default function SettingsTab({
                 <div
                   className={`p-4 rounded-lg border transition-colors ${
                     clinic.id === activeClinicId
-                      ? "bg-orange-50 border-orange-300"
+                      ? "bg-blue-50 border-blue-300"
                       : "bg-gray-50 border-gray-200"
                   }`}
                 >
@@ -177,7 +240,7 @@ export default function SettingsTab({
                       <div
                         className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${
                           clinic.id === activeClinicId
-                            ? "bg-orange-600 text-white"
+                            ? "bg-blue-600 text-white"
                             : "bg-gray-300 text-gray-600"
                         }`}
                       >
@@ -200,13 +263,13 @@ export default function SettingsTab({
                       {clinic.id !== activeClinicId && (
                         <button
                           onClick={() => onSwitchClinic(clinic.id)}
-                          className="px-3 py-1.5 bg-orange-100 text-orange-700 rounded-lg text-xs font-medium hover:bg-orange-200"
+                          className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200"
                         >
                           切替
                         </button>
                       )}
                       {clinic.id === activeClinicId && (
-                        <span className="px-3 py-1.5 bg-orange-600 text-white rounded-lg text-xs font-medium">
+                        <span className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium">
                           使用中
                         </span>
                       )}
@@ -264,286 +327,48 @@ export default function SettingsTab({
         )}
       </div>
 
-      {/* Google Business Profile連携 */}
-      <GoogleSettingsSection />
-    </div>
-  );
-}
-
-// ─── Google Business Profile設定セクション ──────
-function GoogleSettingsSection() {
-  const [google, setGoogle] = useState<GoogleSettings | null>(null);
-  const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
-  const [showSection, setShowSection] = useState(false);
-  const [status, setStatus] = useState<"idle" | "authorizing" | "loading-locations" | "connected" | "error">("idle");
-  const [error, setError] = useState("");
-  const [locations, setLocations] = useState<Array<{ accountId: string; locationId: string; locationName: string; address: string }>>([]);
-  const [checkResult, setCheckResult] = useState<{ valid?: boolean; email?: string; error?: string; accountCount?: number; accountError?: string } | null>(null);
-  const [checking, setChecking] = useState(false);
-
-  useEffect(() => {
-    const saved = getGoogleSettings();
-    if (saved) {
-      setGoogle(saved);
-      setClientId(saved.clientId || "");
-      setClientSecret(saved.clientSecret || "");
-      if (saved.accessToken && saved.locationId) {
-        setStatus("connected");
-      }
-      setShowSection(true);
-    }
-  }, []);
-
-  const startOAuth = async () => {
-    if (!clientId || !clientSecret) {
-      setError("Client IDとClient Secretを入力してください");
-      return;
-    }
-    // 保存
-    saveGoogleSettings({ clientId, clientSecret });
-    setStatus("authorizing");
-    setError("");
-
-    try {
-      const redirectUri = `${window.location.origin}/google-callback`;
-      const res = await fetch("/api/google/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId, redirectUri }),
-      });
-      const data = await res.json();
-      if (data.authUrl) {
-        window.location.href = data.authUrl;
-      }
-    } catch {
-      setError("認証開始に失敗しました");
-      setStatus("error");
-    }
-  };
-
-  const selectLocation = (loc: { accountId: string; locationId: string; locationName: string }) => {
-    if (!google) return;
-    const updated = { ...google, accountId: loc.accountId, locationId: loc.locationId, locationName: loc.locationName };
-    setGoogle(updated);
-    saveGoogleSettings(updated);
-    setStatus("connected");
-    setLocations([]);
-  };
-
-  const disconnect = () => {
-    clearGoogleSettings();
-    setGoogle(null);
-    setClientId("");
-    setClientSecret("");
-    setStatus("idle");
-    setLocations([]);
-  };
-
-  return (
-    <div className="bg-white rounded-xl shadow-sm p-6">
-      <button
-        onClick={() => setShowSection(!showSection)}
-        className="flex items-center justify-between w-full"
-      >
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">📍</span>
-          <div className="text-left">
-            <h3 className="font-bold text-gray-800 text-lg">GBP投稿（Google連携）</h3>
-            <p className="text-xs text-gray-500">
-              Google連携を設定すると、一括生成時にGBPへ投稿できます
+      {/* SerpApiキー */}
+      <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <h3 className="font-bold text-gray-800 text-lg mb-4">SerpApi設定</h3>
+        <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+          <label className="block text-sm font-medium text-amber-800 mb-1">
+            SerpApi APIキー
+          </label>
+          <div className="flex gap-2">
+            <input
+              type={showSerpKey ? "text" : "password"}
+              value={serpApiKey}
+              onChange={(e) => setSerpApiKey(e.target.value)}
+              placeholder="SerpApi APIキー"
+              className="flex-1 px-4 py-2.5 border border-amber-200 rounded-lg text-sm font-mono bg-white outline-none focus:ring-2 focus:ring-amber-500"
+            />
+            <button
+              onClick={() => setShowSerpKey(!showSerpKey)}
+              className="px-3 py-2 bg-amber-100 text-amber-700 rounded-lg text-xs hover:bg-amber-200"
+            >
+              {showSerpKey ? "隠す" : "表示"}
+            </button>
+          </div>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-xs text-amber-600">
+              <a href="https://serpapi.com/" target="_blank" rel="noopener noreferrer" className="underline">
+                SerpApi
+              </a>
+              で取得（MEO順位チェックに使用）
             </p>
+            <button
+              onClick={handleSaveSerpApiKey}
+              className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                serpSaved
+                  ? "bg-green-500 text-white"
+                  : "bg-amber-600 text-white hover:bg-amber-700"
+              }`}
+            >
+              {serpSaved ? "保存済み" : "保存"}
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {status === "connected" && (
-            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">連携済</span>
-          )}
-          <svg
-            className={`w-5 h-5 text-gray-400 transition-transform ${showSection ? "rotate-180" : ""}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </button>
-
-      {showSection && (
-        <div className="mt-4 space-y-4">
-          {status === "connected" && google?.locationName ? (
-            <div className="space-y-3">
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-green-800">Google連携済み</p>
-                    <p className="text-xs text-green-600 mt-1">ビジネス: {google.locationName}</p>
-                    <p className="text-xs text-gray-500 mt-1">一括生成時にGBPへの投稿が有効になります</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={async () => {
-                        if (!google?.accessToken) return;
-                        setChecking(true);
-                        setCheckResult(null);
-                        try {
-                          // トークン期限切れならリフレッシュ
-                          let token = google.accessToken;
-                          if (google.tokenExpiry && new Date(google.tokenExpiry) < new Date()) {
-                            const refreshRes = await fetch("/api/google/token", {
-                              method: "PUT",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                refreshToken: google.refreshToken,
-                                clientId: google.clientId,
-                                clientSecret: google.clientSecret,
-                              }),
-                            });
-                            const refreshData = await refreshRes.json();
-                            if (refreshRes.ok && refreshData.accessToken) {
-                              token = refreshData.accessToken;
-                              const updated = {
-                                ...google,
-                                accessToken: token,
-                                tokenExpiry: new Date(Date.now() + (refreshData.expiresIn || 3600) * 1000).toISOString(),
-                              };
-                              setGoogle(updated);
-                              saveGoogleSettings(updated);
-                            }
-                          }
-                          const res = await fetch("/api/google/check", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ accessToken: token }),
-                          });
-                          const data = await res.json();
-                          setCheckResult(data);
-                        } catch {
-                          setCheckResult({ valid: false, error: "接続確認に失敗しました" });
-                        } finally {
-                          setChecking(false);
-                        }
-                      }}
-                      disabled={checking}
-                      className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs hover:bg-blue-100 disabled:opacity-50"
-                    >
-                      {checking ? "確認中..." : "接続確認"}
-                    </button>
-                    <button
-                      onClick={disconnect}
-                      className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs hover:bg-red-100"
-                    >
-                      連携解除
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* 接続確認結果 */}
-              {checkResult && (
-                <div className={`p-4 rounded-lg border ${checkResult.valid ? "bg-blue-50 border-blue-200" : "bg-red-50 border-red-200"}`}>
-                  {checkResult.valid ? (
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-blue-800">接続OK</p>
-                      {checkResult.email && <p className="text-xs text-blue-600">アカウント: {checkResult.email}</p>}
-                      <p className="text-xs text-blue-600">GBPアカウント数: {checkResult.accountCount ?? 0}</p>
-                      {checkResult.accountError && <p className="text-xs text-orange-600">API注意: {checkResult.accountError}</p>}
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-red-800">接続エラー</p>
-                      <p className="text-xs text-red-600">{checkResult.error}</p>
-                      {checkResult.error?.includes("無効") && (
-                        <p className="text-xs text-red-500 mt-1">トークンが期限切れの可能性があります。連携解除→再連携をお試しください。</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm font-medium text-blue-800 mb-2">設定手順</p>
-                <ol className="text-xs text-blue-700 space-y-1.5 list-decimal list-inside">
-                  <li>Google Cloud Console でプロジェクトを作成</li>
-                  <li>「My Business Business Information API」を有効化</li>
-                  <li>「OAuth同意画面」を設定（外部→テスト→自分のメールを追加）</li>
-                  <li>「認証情報」→「OAuth 2.0 クライアント ID」を作成（Webアプリケーション）</li>
-                  <li>リダイレクトURIに以下を追加（コピーしてそのまま貼り付け）：</li>
-                </ol>
-                <div className="mt-2 mb-2 p-2 bg-white border border-blue-300 rounded-lg">
-                  <code className="text-xs text-blue-800 break-all select-all">
-                    {typeof window !== "undefined" ? window.location.origin + "/google-callback" : "https://your-app.vercel.app/google-callback"}
-                  </code>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(window.location.origin + "/google-callback")}
-                    className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded hover:bg-blue-200"
-                  >
-                    コピー
-                  </button>
-                </div>
-                <ol className="text-xs text-blue-700 space-y-1.5 list-decimal list-inside" start={6}>
-                  <li>Client IDとClient Secretを下に入力</li>
-                </ol>
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Client ID</label>
-                  <input
-                    type="text"
-                    value={clientId}
-                    onChange={(e) => setClientId(e.target.value)}
-                    placeholder="xxxx.apps.googleusercontent.com"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Client Secret</label>
-                  <input
-                    type="password"
-                    value={clientSecret}
-                    onChange={(e) => setClientSecret(e.target.value)}
-                    placeholder="GOCSPX-..."
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <button
-                  onClick={startOAuth}
-                  disabled={status === "authorizing" || status === "loading-locations"}
-                  className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
-                >
-                  {status === "authorizing" ? "認証画面に移動中..." :
-                   status === "loading-locations" ? "ビジネス情報取得中..." :
-                   "Googleアカウントを連携する"}
-                </button>
-              </div>
-
-              {/* ロケーション選択 */}
-              {locations.length > 1 && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-gray-700">ビジネスを選択してください：</p>
-                  {locations.map((loc) => (
-                    <button
-                      key={loc.locationId}
-                      onClick={() => selectLocation(loc)}
-                      className="w-full p-3 text-left bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors"
-                    >
-                      <p className="text-sm font-medium text-gray-800">{loc.locationName}</p>
-                      <p className="text-xs text-gray-500">{loc.address}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {error && (
-                <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
-              )}
-            </>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -599,16 +424,10 @@ function ClinicEditForm({
   const [noteId, setNoteId] = useState(clinic?.noteProfile?.noteId || "");
   const [noteBio, setNoteBio] = useState(clinic?.noteProfile?.bio || "");
   const [noteLongBio, setNoteLongBio] = useState(clinic?.noteProfile?.longBio || "");
-  const [noteHeaderImageGuide, setNoteHeaderImageGuide] = useState(clinic?.noteProfile?.headerImageGuide || "");
-  const [noteIconGuide, setNoteIconGuide] = useState(clinic?.noteProfile?.iconGuide || "");
   const [noteArticleFooter, setNoteArticleFooter] = useState(clinic?.noteProfile?.articleFooter || "");
   const [noteHashtags, setNoteHashtags] = useState(clinic?.noteProfile?.hashtags?.join(", ") || "");
   const [noteWritingTone, setNoteWritingTone] = useState(clinic?.noteProfile?.writingTone || "");
   const [showNoteSection, setShowNoteSection] = useState(!!(clinic?.noteProfile?.displayName));
-
-  // noteログイン情報
-  const [noteLoginEmail, setNoteLoginEmail] = useState(clinic?.noteLogin?.email || "");
-  const [noteLoginPassword, setNoteLoginPassword] = useState(clinic?.noteLogin?.password || "");
 
   // WordPress
   const [wpSiteUrl, setWpSiteUrl] = useState(clinic?.wordpress?.siteUrl || "");
@@ -653,8 +472,6 @@ function ClinicEditForm({
       noteId: noteId || undefined,
       bio: noteBio || undefined,
       longBio: noteLongBio || undefined,
-      headerImageGuide: noteHeaderImageGuide || undefined,
-      iconGuide: noteIconGuide || undefined,
       articleFooter: noteArticleFooter || undefined,
       hashtags: noteHashtags ? noteHashtags.split(",").map(t => t.trim()).filter(Boolean) : undefined,
       writingTone: noteWritingTone || undefined,
@@ -663,11 +480,7 @@ function ClinicEditForm({
     const categories = selectedCategories.length > 0 ? selectedCategories : ["整体院"];
     const category = categories.join("・");
 
-    const noteLogin = noteLoginEmail && noteLoginPassword
-      ? { email: noteLoginEmail, password: noteLoginPassword }
-      : undefined;
-
-    onSave({ name, area, category, categories, description, ownerName, specialty, keywords, urls, wordpress, noteProfile, noteLogin });
+    onSave({ name, area, category, categories, description, ownerName, specialty, keywords, urls, wordpress, noteProfile });
   };
 
   const testWordPress = async () => {
@@ -743,13 +556,13 @@ function ClinicEditForm({
         value={value}
         onChange={(e) => setter(e.target.value)}
         placeholder={placeholder}
-        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500"
+        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
       />
     </div>
   );
 
   return (
-    <div className="p-5 bg-white border-2 border-orange-300 rounded-xl space-y-4">
+    <div className="p-5 bg-white border-2 border-blue-300 rounded-xl space-y-4">
       <h4 className="font-bold text-gray-800">
         {clinic ? `${clinic.name} を編集` : "新しい院を追加"}
       </h4>
@@ -760,13 +573,13 @@ function ClinicEditForm({
           <label className="block text-xs font-medium text-gray-600 mb-1">院名 *</label>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)}
             placeholder="○○整体院"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500" />
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">エリア</label>
           <input type="text" value={area} onChange={(e) => setArea(e.target.value)}
             placeholder="例：東京都渋谷区"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500" />
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
       </div>
 
@@ -776,13 +589,13 @@ function ClinicEditForm({
           <label className="block text-xs font-medium text-gray-600 mb-1">院長名</label>
           <input type="text" value={ownerName} onChange={(e) => setOwnerName(e.target.value)}
             placeholder="例：山田太郎"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500" />
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">専門分野</label>
           <input type="text" value={specialty} onChange={(e) => setSpecialty(e.target.value)}
             placeholder="例：腰痛・肩こり専門"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500" />
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
       </div>
 
@@ -791,7 +604,7 @@ function ClinicEditForm({
         <label className="block text-xs font-medium text-gray-600 mb-1">
           業種（複数選択可）
           {selectedCategories.length > 0 && (
-            <span className="text-orange-600 ml-1">{selectedCategories.join("・")}</span>
+            <span className="text-blue-600 ml-1">{selectedCategories.join("・")}</span>
           )}
         </label>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -802,8 +615,8 @@ function ClinicEditForm({
               onClick={() => toggleCategory(cat)}
               className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
                 selectedCategories.includes(cat)
-                  ? "bg-orange-600 text-white border-orange-600"
-                  : "bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:bg-orange-50"
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:bg-blue-50"
               }`}
             >
               {selectedCategories.includes(cat) && "✓ "}{cat}
@@ -818,7 +631,7 @@ function ClinicEditForm({
         <label className="block text-xs font-medium text-gray-600 mb-1">院の説明</label>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
           placeholder="例：渋谷区で肩こり・腰痛を専門にしている整体院"
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500 resize-none" />
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
       </div>
 
       {/* キーワード */}
@@ -834,11 +647,11 @@ function ClinicEditForm({
         </p>
         <textarea value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)} rows={6}
           placeholder={"渋谷区 腰痛\n渋谷 肩こり\n渋谷区 整体\n恵比寿 骨盤矯正\n渋谷 頭痛\n渋谷区 猫背矯正"}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-orange-500 resize-none" />
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
         {/* キーワード候補 */}
         {area && (
-          <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-            <p className="text-xs font-medium text-orange-800 mb-2">おすすめキーワード候補（タップでコピー or 追加）</p>
+          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-xs font-medium text-blue-800 mb-2">おすすめキーワード候補（タップでコピー or 追加）</p>
             <div className="flex flex-wrap gap-1.5">
               {(() => {
                 const areaName = area.replace(/[都道府県市区町村].*$/, '') || area;
@@ -858,7 +671,7 @@ function ClinicEditForm({
                         className={`px-2 py-1 rounded text-xs transition-all ${
                           copiedKw === kw
                             ? "bg-green-500 text-white"
-                            : "bg-white text-gray-700 border border-gray-200 hover:border-orange-300"
+                            : "bg-white text-gray-700 border border-gray-200 hover:border-blue-300"
                         }`}
                       >
                         {copiedKw === kw ? "コピー済" : kw}
@@ -869,7 +682,7 @@ function ClinicEditForm({
                           onClick={() => {
                             setKeywordsText(prev => prev.trim() ? prev.trim() + "\n" + kw : kw);
                           }}
-                          className="px-1.5 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700"
+                          className="px-1.5 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
                           title="キーワード欄に追加"
                         >
                           +
@@ -900,7 +713,7 @@ function ClinicEditForm({
       <div>
         <button
           onClick={() => setShowUrlSection(!showUrlSection)}
-          className="flex items-center gap-2 text-sm font-medium text-orange-600 hover:text-orange-700"
+          className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
         >
           <svg className={`w-4 h-4 transition-transform ${showUrlSection ? "rotate-90" : ""}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -910,8 +723,8 @@ function ClinicEditForm({
         </button>
 
         {showUrlSection && (
-          <div className="mt-3 p-4 bg-orange-50 rounded-lg border border-orange-200 space-y-2.5">
-            <p className="text-xs text-orange-600 mb-1">設定したURLはGBP投稿文やブログ記事の生成時に埋め込まれます</p>
+          <div className="mt-3 p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-2.5">
+            <p className="text-xs text-slate-600 mb-1">設定したURLはGBP投稿文やブログ記事の生成時に埋め込まれます</p>
             {urlField(websiteUrl, setWebsiteUrl, "ホームページURL", "🏠")}
             {urlField(bookingUrl, setBookingUrl, "予約ページURL", "📅")}
             {urlField(googleMapUrl, setGoogleMapUrl, "Googleマップ口コミURL", "📍")}
@@ -940,26 +753,6 @@ function ClinicEditForm({
         {showNoteSection && (
           <div className="mt-3 p-4 bg-green-50 rounded-lg border border-green-200 space-y-3">
             <p className="text-xs text-green-600 mb-1">noteの記事生成時にプロフィール情報・定型文・ハッシュタグが自動で反映されます</p>
-
-            {/* noteログイン情報（自動投稿用） */}
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3">
-              <p className="text-xs font-bold text-green-700 mb-2">noteログイン情報（自動投稿用）</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">メールアドレス</label>
-                  <input type="email" value={noteLoginEmail} onChange={(e) => setNoteLoginEmail(e.target.value)}
-                    placeholder="note登録メール"
-                    className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">パスワード</label>
-                  <input type="password" value={noteLoginPassword} onChange={(e) => setNoteLoginPassword(e.target.value)}
-                    placeholder="noteパスワード"
-                    className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-              </div>
-              <p className="text-xs text-gray-400 mt-1">※ 記事生成後に「noteに投稿」ボタンが表示されます</p>
-            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1013,35 +806,6 @@ function ClinicEditForm({
               <input type="text" value={noteHashtags} onChange={(e) => setNoteHashtags(e.target.value)}
                 placeholder="例：整体, 神経整体, 腰痛, 坐骨神経痛, 長居, 大阪整体, 慢性痛"
                 className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">ヘッダー画像メモ</label>
-                <input type="text" value={noteHeaderImageGuide} onChange={(e) => setNoteHeaderImageGuide(e.target.value)}
-                  placeholder="例：院内写真 or 施術風景"
-                  className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">アイコン画像メモ</label>
-                <input type="text" value={noteIconGuide} onChange={(e) => setNoteIconGuide(e.target.value)}
-                  placeholder="例：プロフィール写真（白衣）"
-                  className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
-              </div>
-            </div>
-
-            {/* note設定ガイド */}
-            <div className="p-3 bg-white border border-green-200 rounded-lg">
-              <p className="text-xs font-medium text-green-800 mb-2">note.comプロフィール設定チェックリスト</p>
-              <ul className="text-xs text-green-700 space-y-1 list-disc list-inside">
-                <li>アカウントID: note.com/<strong>@xxx</strong> の部分</li>
-                <li>表示名: 検索で見つかりやすい「名前｜肩書き」形式推奨</li>
-                <li>自己紹介: 140文字以内。キーワード（地域名+症状名）を含める</li>
-                <li>アイコン: 顔写真推奨（信頼性UP）</li>
-                <li>ヘッダー: 院の雰囲気が伝わる写真（施術風景・院内）</li>
-                <li>リンク設定: note設定 → SNS連携 → HP・LINE等のURLを登録</li>
-                <li>記事マガジン: テーマ別にマガジンを作成（例: 腰痛改善、自律神経）</li>
-              </ul>
             </div>
           </div>
         )}
@@ -1148,7 +912,7 @@ function ClinicEditForm({
         <button
           onClick={handleSubmit}
           disabled={!name.trim()}
-          className="flex-1 py-2.5 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+          className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
         >
           {clinic ? "更新" : "追加"}
         </button>

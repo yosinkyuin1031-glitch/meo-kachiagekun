@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
-// Vercelの実行リージョンを東京に設定（日本のWordPressサーバーへの接続を安定させる）
-export const runtime = "nodejs";
-export const preferredRegion = "hnd1";
+export const maxDuration = 60;
 
 interface WordPressPostRequest {
   siteUrl: string;
@@ -472,6 +471,12 @@ async function updateSeoViaXmlRpc(
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
+    }
+
     const body: WordPressPostRequest = await request.json();
     const { siteUrl, username, appPassword, title, content, status, slug, categorySlug, postType, meta, seo } = body;
 
@@ -685,6 +690,12 @@ export async function POST(request: NextRequest) {
 // WordPress接続テスト
 export async function PUT(request: NextRequest) {
   try {
+    const supabase = await createClient();
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
+    }
+
     const { siteUrl, username, appPassword } = await request.json();
 
     if (!siteUrl || !username || !appPassword) {

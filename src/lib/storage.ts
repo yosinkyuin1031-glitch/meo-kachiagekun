@@ -1,4 +1,5 @@
-import { ChecklistItem, ClinicProfile, AppSettings, BusinessProfile, GeneratedContent } from "./types";
+import { ClinicProfile, AppSettings, BusinessProfile, GeneratedContent, SearchConsoleSettings, GbpMaterialImage, ChecklistItem } from "./types";
+import { RankingHistory } from "./ranking-types";
 
 const CLINICS_KEY = "meo_clinics";
 const SETTINGS_KEY = "meo_settings";
@@ -109,24 +110,21 @@ export function getBusinessProfile(): BusinessProfile {
     ownerName: clinic.ownerName,
     specialty: clinic.specialty,
     noteProfile: clinic.noteProfile,
-    noteLogin: clinic.noteLogin,
     urls: clinic.urls,
     wordpress: clinic.wordpress,
   };
 }
 
-// 後方互換（旧コードでも動くように）
+// 後方互換
 export function getProfile(): BusinessProfile {
   return getBusinessProfile();
 }
 
 export function saveProfile(profile: BusinessProfile) {
-  // 共通設定を更新
   const settings = getSettings();
   settings.anthropicKey = profile.anthropicKey;
   saveSettings(settings);
 
-  // アクティブ院を更新
   const clinic = getActiveClinic();
   if (clinic) {
     updateClinic(clinic.id, {
@@ -138,36 +136,6 @@ export function saveProfile(profile: BusinessProfile) {
       wordpress: profile.wordpress,
     });
   }
-}
-
-// ─── チェックリスト（院ごと）────────────────────
-function checklistKey(clinicId: string): string {
-  return `meo_checklist_${clinicId}`;
-}
-
-export function getChecklist(clinicId?: string): ChecklistItem[] {
-  if (typeof window === "undefined") return [];
-  const id = clinicId || getActiveClinic()?.id || "";
-  if (!id) return getDefaultChecklist();
-
-  const data = localStorage.getItem(checklistKey(id));
-  if (data) return JSON.parse(data);
-
-  // 旧データからの移行
-  const oldData = localStorage.getItem("meo_checklist");
-  if (oldData) {
-    const items = JSON.parse(oldData);
-    localStorage.setItem(checklistKey(id), JSON.stringify(items));
-    return items;
-  }
-
-  return getDefaultChecklist();
-}
-
-export function saveChecklist(items: ChecklistItem[], clinicId?: string) {
-  const id = clinicId || getActiveClinic()?.id || "";
-  if (!id) return;
-  localStorage.setItem(checklistKey(id), JSON.stringify(items));
 }
 
 // ─── 生成コンテンツ ──────────────────────────
@@ -212,28 +180,7 @@ export function saveFeedback(feedback: GenerationFeedback) {
   localStorage.setItem(FEEDBACK_KEY, JSON.stringify([feedback, ...existing]));
 }
 
-// ─── Google Business Profile 設定 ───────────────
-import { GoogleSettings } from "./types";
-
-const GOOGLE_KEY = "meo_google_settings";
-
-export function getGoogleSettings(): GoogleSettings | null {
-  if (typeof window === "undefined") return null;
-  const data = localStorage.getItem(GOOGLE_KEY);
-  return data ? JSON.parse(data) : null;
-}
-
-export function saveGoogleSettings(settings: GoogleSettings) {
-  localStorage.setItem(GOOGLE_KEY, JSON.stringify(settings));
-}
-
-export function clearGoogleSettings() {
-  localStorage.removeItem(GOOGLE_KEY);
-}
-
 // ─── MEOランキング履歴 ──────────────────────────
-import { RankingHistory } from "./ranking-types";
-
 const RANKING_HISTORY_KEY = "meo_ranking_history";
 const SERPAPI_KEY = "meo_serpapi_key";
 
@@ -258,38 +205,71 @@ export function saveSerpApiKey(key: string) {
   localStorage.setItem(SERPAPI_KEY, key);
 }
 
-// ─── タスク管理 ──────────────────────────────
-import { Task } from "./types";
+// ─── Google Search Console設定 ──────────────────
+const GSC_KEY = "meo_search_console";
 
-const TASKS_KEY = "meo_tasks";
+export function getSearchConsoleSettings(): SearchConsoleSettings | null {
+  if (typeof window === "undefined") return null;
+  const data = localStorage.getItem(GSC_KEY);
+  return data ? JSON.parse(data) : null;
+}
 
-export function getTasks(): Task[] {
+export function saveSearchConsoleSettings(settings: SearchConsoleSettings) {
+  localStorage.setItem(GSC_KEY, JSON.stringify(settings));
+}
+
+export function clearSearchConsoleSettings() {
+  localStorage.removeItem(GSC_KEY);
+}
+
+// ─── GBP素材画像ライブラリ ──────────────────────
+const GBP_IMAGES_KEY = "meo_gbp_images";
+
+export function getGbpImages(): GbpMaterialImage[] {
   if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(TASKS_KEY);
+  const data = localStorage.getItem(GBP_IMAGES_KEY);
   return data ? JSON.parse(data) : [];
 }
 
-export function saveTasks(tasks: Task[]) {
-  localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+export function saveGbpImage(image: GbpMaterialImage) {
+  const existing = getGbpImages();
+  localStorage.setItem(GBP_IMAGES_KEY, JSON.stringify([image, ...existing]));
 }
 
-export function addTask(task: Task) {
-  const tasks = getTasks();
-  saveTasks([task, ...tasks]);
+export function deleteGbpImage(id: string) {
+  const existing = getGbpImages().filter((img) => img.id !== id);
+  localStorage.setItem(GBP_IMAGES_KEY, JSON.stringify(existing));
 }
 
-export function updateTask(id: string, updates: Partial<Task>) {
-  const tasks = getTasks();
-  const updated = tasks.map((t) => (t.id === id ? { ...t, ...updates } : t));
-  saveTasks(updated);
+// ─── チェックリスト（院ごと）────────────────────
+function checklistKey(clinicId: string): string {
+  return `meo_checklist_${clinicId}`;
 }
 
-export function deleteTask(id: string) {
-  const tasks = getTasks().filter((t) => t.id !== id);
-  saveTasks(tasks);
+export function getChecklist(clinicId?: string): ChecklistItem[] {
+  if (typeof window === "undefined") return [];
+  const id = clinicId || getActiveClinic()?.id || "";
+  if (!id) return getDefaultChecklist();
+
+  const data = localStorage.getItem(checklistKey(id));
+  if (data) return JSON.parse(data);
+
+  const oldData = localStorage.getItem("meo_checklist");
+  if (oldData) {
+    const items = JSON.parse(oldData);
+    localStorage.setItem(checklistKey(id), JSON.stringify(items));
+    return items;
+  }
+
+  return getDefaultChecklist();
 }
 
-// ─── デフォルトチェックリスト ────────────────────
+export function saveChecklist(items: ChecklistItem[], clinicId?: string) {
+  const id = clinicId || getActiveClinic()?.id || "";
+  if (!id) return;
+  localStorage.setItem(checklistKey(id), JSON.stringify(items));
+}
+
 function getDefaultChecklist(): ChecklistItem[] {
   return [
     { id: "gbp-1", category: "GBP最適化", title: "NAP情報（店名・住所・電話）を正確に登録", description: "ウェブサイト・ポータルサイト・SNSすべてで完全一致させる", priority: "high", completed: false },
@@ -318,19 +298,19 @@ function getDefaultChecklist(): ChecklistItem[] {
     { id: "cite-5", category: "サイテーション", title: "Yahoo!プレイスに登録", description: "Yahoo!マップ連携", priority: "medium", completed: false },
     { id: "cite-6", category: "サイテーション", title: "Apple Business Connectに登録", description: "Appleマップ連携", priority: "low", completed: false },
     { id: "web-1", category: "ウェブサイト", title: "症状別ページを作成（主要5症状以上）", description: "腰痛・肩こり・頭痛等の専用ページ", priority: "high", completed: false },
-    { id: "web-2", category: "ウェブサイト", title: "構造化データ（LocalBusiness）を実装", description: "Googleが院の情報（名前・住所・電話番号・営業時間・施術内容）を正しく認識するための設定。HTMLの<head>内にJSON-LD形式のコードを貼り付けるだけでOK。MEO勝ち上げくんの「LLMO対策」タブで自動生成できます。これを設置すると、Google検索結果に営業時間や評価が表示されやすくなります。", priority: "high", completed: false },
-    { id: "web-3", category: "ウェブサイト", title: "FAQページを作成＋構造化データ", description: "よくある質問ページを作り、FAQPage形式の構造化データを追加する設定。Google検索結果にQ&Aが直接表示（リッチリザルト）されるようになり、クリック率が大幅UP。ChatGPTやGeminiのAI検索でも引用されやすくなります。MEO勝ち上げくんでFAQを生成→WordPressに投稿→構造化データを追加の流れで対応。", priority: "medium", completed: false },
+    { id: "web-2", category: "ウェブサイト", title: "構造化データ（LocalBusiness）を実装", description: "Googleが院情報を正しく認識するための設定。JSON-LDコードをHTMLに追加。", priority: "high", completed: false },
+    { id: "web-3", category: "ウェブサイト", title: "FAQページを作成＋構造化データ", description: "FAQ構造化データでリッチリザルト表示＆AI検索引用率UP", priority: "medium", completed: false },
     { id: "web-4", category: "ウェブサイト", title: "タイトルタグを最適化", description: "「地域名+症状+業態」の形式に", priority: "high", completed: false },
     { id: "web-5", category: "ウェブサイト", title: "モバイル表示速度を改善", description: "Core Web Vitals対応", priority: "medium", completed: false },
     { id: "web-6", category: "ウェブサイト", title: "患者の声・症例ページを作成", description: "写真付きの改善事例を掲載", priority: "medium", completed: false },
     { id: "ext-1", category: "外部施策", title: "noteアカウントを開設", description: "院長の想い・症状解説・セルフケア記事を投稿", priority: "medium", completed: false },
     { id: "ext-2", category: "外部施策", title: "Instagramを開設・運用開始", description: "施術ビフォーアフター・院内雰囲気の投稿", priority: "medium", completed: false },
     { id: "ext-3", category: "外部施策", title: "YouTubeでセルフケア動画を投稿", description: "ストレッチ・セルフケア動画で信頼獲得", priority: "low", completed: false },
-    { id: "llmo-1", category: "LLMO対策", title: "FAQ構造化データを実装", description: "ChatGPT・Gemini・PerplexityなどのAI検索で「○○でおすすめの整体院は？」と聞かれた時に、あなたの院のFAQが回答に引用されるための設定。FAQページにJSON-LDコードを追加するだけで対応可能。MEO勝ち上げくんの「LLMO対策」タブで構造化データを自動生成できます。", priority: "high", completed: false },
+    { id: "llmo-1", category: "LLMO対策", title: "FAQ構造化データを実装", description: "AI検索で引用されるためのJSON-LD設定", priority: "high", completed: false },
     { id: "llmo-2", category: "LLMO対策", title: "症状別の詳細コンテンツを作成", description: "ChatGPT・Geminiが参照する情報源になる", priority: "medium", completed: false },
     { id: "llmo-3", category: "LLMO対策", title: "E-E-A-T（経験・専門性・権威性・信頼性）を強化", description: "資格情報・経歴・実績をサイトに明記", priority: "medium", completed: false },
     { id: "wp-1", category: "WordPress投稿", title: "症状別ブログ記事を投稿（主要キーワード）", description: "各症状について1500〜2500字の記事をWordPressに投稿", priority: "high", completed: false },
     { id: "wp-2", category: "WordPress投稿", title: "FAQ記事をWordPressに投稿", description: "よくある質問をブログ記事として投稿（LLMO対策）", priority: "high", completed: false },
-    { id: "wp-3", category: "WordPress投稿", title: "構造化データをサイトに実装", description: "WordPressのテーマ（header.php）にJSON-LDコードを貼り付ける作業。LocalBusiness（院情報）とFAQPage（よくある質問）の2種類を設置。プラグイン「Insert Headers and Footers」を使えばテーマ編集なしでも設置可能。", priority: "medium", completed: false },
+    { id: "wp-3", category: "WordPress投稿", title: "構造化データをサイトに実装", description: "プラグイン「Insert Headers and Footers」等でJSON-LDを設置", priority: "medium", completed: false },
   ];
 }

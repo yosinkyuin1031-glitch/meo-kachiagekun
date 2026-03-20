@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
-export const runtime = "nodejs";
-export const preferredRegion = "hnd1";
+export const maxDuration = 60;
 
 /**
  * WordPress XML-RPC APIを使ってカスタム投稿タイプ（FAQ等）に投稿する
@@ -65,6 +65,12 @@ function parseXmlRpcResponse(xml: string): { success: boolean; value?: string; f
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
+    }
+
     const body: XmlRpcPostRequest = await request.json();
     const { siteUrl, username, appPassword, title, content, status, postType, slug, customFields } = body;
 
@@ -166,6 +172,12 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
+    }
+
     const { siteUrl, username, appPassword } = await request.json();
     const baseUrl = siteUrl.replace(/\/$/, "");
     const xmlrpcUrl = `${baseUrl}/xmlrpc.php`;
