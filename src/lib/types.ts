@@ -52,6 +52,9 @@ export interface ClinicProfile {
   noteProfile?: NoteProfile;  // noteプロフィール設定
   urls?: ClinicUrls;
   wordpress?: WordPressSettings;
+  strengths?: string;          // 院の強み・差別化ポイント
+  experience?: string;         // 経験・実績・資格
+  reviews?: string;            // 代表的な口コミ内容
 }
 
 // アプリ全体の共通設定
@@ -73,6 +76,9 @@ export interface BusinessProfile {
   noteProfile?: NoteProfile;
   urls?: ClinicUrls;
   wordpress?: WordPressSettings;
+  strengths?: string;
+  experience?: string;
+  reviews?: string;
 }
 
 export type ContentType = "note" | "gbp" | "faq" | "faq-short" | "blog" | "blog-seo" | "structured-data" | "review-reply";

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { BusinessProfile, GeneratedContent } from "@/lib/types";
-import { saveContent, updateContent } from "@/lib/supabase-storage";
+import { saveContent, updateContent, getContentsByKeyword } from "@/lib/supabase-storage";
 import {
   blogPostWithFaqPrompt,
   faqIndividualListPrompt,
@@ -166,6 +166,10 @@ export default function BulkGenerator({ profile }: Props) {
   const [gbpPost, setGbpPost] = useState("");
   const [noteArticle, setNoteArticle] = useState("");
 
+  // 重複チェック
+  const [existingContent, setExistingContent] = useState<{ type: string; title: string; createdAt: string }[]>([]);
+  const [duplicateChecked, setDuplicateChecked] = useState(false);
+
   // Inline editing state
   const [editingBlog, setEditingBlog] = useState(false);
   const [editingGbp, setEditingGbp] = useState(false);
@@ -234,11 +238,29 @@ export default function BulkGenerator({ profile }: Props) {
     return { postUrl: data.postUrl as string, postId: data.postId as number };
   };
 
+  // ---------- 重複チェック ----------
+  const checkDuplicates = async () => {
+    if (!keyword) return;
+    const existing = await getContentsByKeyword(keyword);
+    const mapped = existing.map((c) => ({
+      type: c.type,
+      title: c.title,
+      createdAt: c.createdAt,
+    }));
+    setExistingContent(mapped);
+    setDuplicateChecked(true);
+  };
+
   // ---------- Main generation flow ----------
   const runBulkGeneration = async () => {
     if (!keyword) {
       setError("キーワードを入力してください");
       return;
+    }
+
+    // 重複チェック（未チェックの場合）
+    if (!duplicateChecked) {
+      await checkDuplicates();
     }
 
     setError("");
@@ -495,7 +517,7 @@ export default function BulkGenerator({ profile }: Props) {
             {profile.keywords.length > 0 ? (
               <select
                 value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
+                onChange={(e) => { setKeyword(e.target.value); setDuplicateChecked(false); setExistingContent([]); }}
                 disabled={isRunning}
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100"
               >
@@ -510,7 +532,7 @@ export default function BulkGenerator({ profile }: Props) {
               <input
                 type="text"
                 value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
+                onChange={(e) => { setKeyword(e.target.value); setDuplicateChecked(false); setExistingContent([]); }}
                 disabled={isRunning}
                 placeholder="例: 腰痛、肩こり、頭痛"
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100"
@@ -638,12 +660,49 @@ export default function BulkGenerator({ profile }: Props) {
             </div>
           )}
 
+          {/* 重複警告 */}
+          {existingContent.length > 0 && (
+            <div className="bg-amber-50 border border-amber-300 rounded-lg p-4">
+              <p className="text-sm font-medium text-amber-800 mb-2">
+                「{keyword}」で既に生成済みのコンテンツがあります
+              </p>
+              <div className="space-y-1 mb-3">
+                {existingContent.slice(0, 5).map((c, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs text-amber-700">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                      c.type === "faq" ? "bg-green-100 text-green-700" :
+                      c.type === "blog" ? "bg-blue-100 text-blue-700" :
+                      c.type === "gbp" ? "bg-red-100 text-red-700" :
+                      "bg-orange-100 text-orange-700"
+                    }`}>{c.type.toUpperCase()}</span>
+                    <span className="truncate">{c.title}</span>
+                    <span className="text-amber-500 flex-shrink-0">{new Date(c.createdAt).toLocaleDateString("ja-JP")}</span>
+                  </div>
+                ))}
+                {existingContent.length > 5 && (
+                  <p className="text-xs text-amber-600">他 {existingContent.length - 5}件</p>
+                )}
+              </div>
+              <p className="text-xs text-amber-600">
+                重複して生成すると同じキーワードのコンテンツが複数作成されます。新しく生成する場合は下のボタンを押してください。
+              </p>
+            </div>
+          )}
+
           {/* エラー表示 */}
           {error && (
             <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">{error}</div>
           )}
 
-          {/* 生成ボタン */}
+          {/* 重複チェックボタン + 生成ボタン */}
+          {keyword && !duplicateChecked && !isRunning && (
+            <button
+              onClick={checkDuplicates}
+              className="w-full py-3 rounded-lg font-bold text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all border border-gray-200"
+            >
+              重複チェック
+            </button>
+          )}
           <button
             onClick={runBulkGeneration}
             disabled={isRunning || !keyword}

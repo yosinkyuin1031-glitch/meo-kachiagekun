@@ -30,6 +30,17 @@ const TYPE_CATEGORY_MAP: Record<string, ImageCategory[]> = {
 
 const POST_TYPES = Object.keys(TYPE_CATEGORY_MAP);
 
+// デザインテンプレート
+type DesignTemplate = "classic" | "modern" | "minimal" | "bold" | "elegant";
+
+const TEMPLATE_OPTIONS: { key: DesignTemplate; label: string; desc: string }[] = [
+  { key: "classic", label: "クラシック", desc: "中央配置・暗めオーバーレイ" },
+  { key: "modern", label: "モダン", desc: "左寄せ・グラデーションバー" },
+  { key: "minimal", label: "ミニマル", desc: "白帯・シンプルテキスト" },
+  { key: "bold", label: "インパクト", desc: "大文字・斜めストライプ" },
+  { key: "elegant", label: "エレガント", desc: "上下枠・セリフ風" },
+];
+
 // ---------- 画像リサイズ ----------
 function resizeImage(file: File, maxWidth: number = 1200): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -74,6 +85,7 @@ export default function GbpImageGenerator({ profile }: Props) {
   const [keyword, setKeyword] = useState("");
   const [overlayText, setOverlayText] = useState("");
   const [ctaText, setCtaText] = useState("ご予約はお気軽に");
+  const [template, setTemplate] = useState<DesignTemplate>("classic");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [generated, setGenerated] = useState(false);
 
@@ -143,64 +155,196 @@ export default function GbpImageGenerator({ profile }: Props) {
     []
   );
 
-  // ---------- テキストオーバーレイ描画 ----------
+  // ---------- テキストオーバーレイ描画（テンプレート別）----------
   const drawTextOverlay = useCallback(
     (ctx: CanvasRenderingContext2D, W: number, H: number) => {
-      ctx.textAlign = "center";
-
-      // 院名（上部）
-      ctx.fillStyle = "rgba(255,255,255,0.95)";
-      ctx.font = "bold 36px 'Hiragino Kaku Gothic ProN', sans-serif";
-      ctx.shadowColor = "rgba(0,0,0,0.6)";
-      ctx.shadowBlur = 8;
-      ctx.fillText(profile.name || "院名", W / 2, 80);
-
-      // タイプバッジ
-      ctx.font = "bold 24px sans-serif";
-      ctx.fillStyle = "rgba(255,255,255,0.7)";
-      ctx.fillText(postType, W / 2, 130);
-
-      // メインキーワード
-      ctx.font = "bold 72px 'Hiragino Kaku Gothic ProN', sans-serif";
-      ctx.fillStyle = "#ffffff";
-      ctx.shadowColor = "rgba(0,0,0,0.7)";
-      ctx.shadowBlur = 12;
-      ctx.fillText(keyword || "キーワード", W / 2, H / 2 - 20);
+      const font = "'Hiragino Kaku Gothic ProN', sans-serif";
       ctx.shadowBlur = 0;
 
-      // オーバーレイテキスト
-      if (overlayText) {
-        ctx.font = "bold 40px 'Hiragino Kaku Gothic ProN', sans-serif";
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        ctx.shadowColor = "rgba(0,0,0,0.5)";
-        ctx.shadowBlur = 6;
-        const lines = wrapText(ctx, overlayText, W - 120);
-        lines.forEach((line, i) => {
-          ctx.fillText(line, W / 2, H / 2 + 60 + i * 50);
-        });
+      if (template === "classic") {
+        // ── クラシック（中央配置・暗めオーバーレイ）──
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(255,255,255,0.95)";
+        ctx.font = `bold 36px ${font}`;
+        ctx.shadowColor = "rgba(0,0,0,0.6)";
+        ctx.shadowBlur = 8;
+        ctx.fillText(profile.name || "院名", W / 2, 80);
+        ctx.font = `bold 24px ${font}`;
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.fillText(postType, W / 2, 130);
+        ctx.font = `bold 72px ${font}`;
+        ctx.fillStyle = "#ffffff";
+        ctx.shadowColor = "rgba(0,0,0,0.7)";
+        ctx.shadowBlur = 12;
+        ctx.fillText(keyword || "キーワード", W / 2, H / 2 - 20);
         ctx.shadowBlur = 0;
-      }
+        if (overlayText) {
+          ctx.font = `bold 40px ${font}`;
+          ctx.fillStyle = "rgba(255,255,255,0.9)";
+          ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 6;
+          wrapText(ctx, overlayText, W - 120).forEach((line, i) => ctx.fillText(line, W / 2, H / 2 + 60 + i * 50));
+          ctx.shadowBlur = 0;
+        }
+        ctx.fillStyle = "rgba(0,0,0,0.45)";
+        ctx.fillRect(0, H - 120, W, 120);
+        if (ctaText) {
+          ctx.font = `bold 32px ${font}`; ctx.fillStyle = "#fbbf24"; ctx.shadowColor = "rgba(0,0,0,0.4)"; ctx.shadowBlur = 4;
+          ctx.fillText(ctaText, W / 2, H - 70); ctx.shadowBlur = 0;
+        }
+        ctx.font = `24px ${font}`; ctx.fillStyle = "rgba(255,255,255,0.8)";
+        ctx.fillText(profile.area || "", W / 2, H - 30);
 
-      // 下部バー
-      ctx.fillStyle = "rgba(0,0,0,0.45)";
-      ctx.fillRect(0, H - 120, W, 120);
-
-      // CTA
-      if (ctaText) {
-        ctx.font = "bold 32px 'Hiragino Kaku Gothic ProN', sans-serif";
-        ctx.fillStyle = "#fbbf24";
-        ctx.shadowColor = "rgba(0,0,0,0.4)";
-        ctx.shadowBlur = 4;
-        ctx.fillText(ctaText, W / 2, H - 70);
+      } else if (template === "modern") {
+        // ── モダン（左寄せ・カラーバー）──
+        ctx.textAlign = "left";
+        // 左サイドバー
+        const grad = ctx.createLinearGradient(0, 0, 0, H);
+        grad.addColorStop(0, "rgba(37, 99, 235, 0.9)");
+        grad.addColorStop(1, "rgba(59, 130, 246, 0.7)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 60, H);
+        // コンテンツエリア背景
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.fillRect(60, H * 0.25, W - 120, H * 0.55);
+        // アクセントライン
+        ctx.fillStyle = "#3b82f6";
+        ctx.fillRect(100, H * 0.3, 6, 120);
+        // テキスト
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.font = `bold 22px ${font}`;
+        ctx.fillText(postType, 130, H * 0.35);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `bold 64px ${font}`;
+        ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 8;
+        ctx.fillText(keyword || "キーワード", 130, H * 0.48);
         ctx.shadowBlur = 0;
-      }
+        if (overlayText) {
+          ctx.font = `36px ${font}`; ctx.fillStyle = "rgba(255,255,255,0.85)";
+          wrapText(ctx, overlayText, W - 200).forEach((line, i) => ctx.fillText(line, 130, H * 0.56 + i * 44));
+        }
+        ctx.font = `bold 28px ${font}`; ctx.fillStyle = "#ffffff";
+        ctx.fillText(profile.name || "", 130, H * 0.75);
+        ctx.font = `20px ${font}`; ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.fillText(profile.area || "", 130, H * 0.8);
+        // 下部CTA
+        if (ctaText) {
+          ctx.fillStyle = "#fbbf24";
+          ctx.fillRect(60, H - 80, W - 60, 80);
+          ctx.textAlign = "center";
+          ctx.font = `bold 30px ${font}`; ctx.fillStyle = "#1e293b";
+          ctx.fillText(ctaText, W / 2 + 30, H - 32);
+        }
 
-      // エリア名
-      ctx.font = "24px 'Hiragino Kaku Gothic ProN', sans-serif";
-      ctx.fillStyle = "rgba(255,255,255,0.8)";
-      ctx.fillText(profile.area || "", W / 2, H - 30);
+      } else if (template === "minimal") {
+        // ── ミニマル（白帯・シンプル）──
+        ctx.textAlign = "center";
+        // 中央の白帯
+        ctx.fillStyle = "rgba(255,255,255,0.92)";
+        ctx.fillRect(0, H * 0.3, W, H * 0.4);
+        // 上下のライン
+        ctx.fillStyle = "#1e293b";
+        ctx.fillRect(0, H * 0.3, W, 3);
+        ctx.fillRect(0, H * 0.7 - 3, W, 3);
+        // テキスト
+        ctx.fillStyle = "#374151";
+        ctx.font = `20px ${font}`;
+        ctx.fillText(`${profile.area} ${postType}`, W / 2, H * 0.38);
+        ctx.fillStyle = "#111827";
+        ctx.font = `bold 60px ${font}`;
+        ctx.fillText(keyword || "キーワード", W / 2, H / 2);
+        if (overlayText) {
+          ctx.font = `32px ${font}`; ctx.fillStyle = "#4b5563";
+          wrapText(ctx, overlayText, W - 160).forEach((line, i) => ctx.fillText(line, W / 2, H * 0.56 + i * 40));
+        }
+        ctx.fillStyle = "#6b7280"; ctx.font = `bold 24px ${font}`;
+        ctx.fillText(profile.name || "", W / 2, H * 0.66);
+        // 下部CTA
+        if (ctaText) {
+          ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(0, H - 70, W, 70);
+          ctx.fillStyle = "#fbbf24"; ctx.font = `bold 28px ${font}`;
+          ctx.fillText(ctaText, W / 2, H - 28);
+        }
+
+      } else if (template === "bold") {
+        // ── インパクト（大文字・斜めストライプ）──
+        ctx.textAlign = "center";
+        // 斜めストライプ
+        ctx.save();
+        ctx.translate(W / 2, H / 2);
+        ctx.rotate(-0.05);
+        ctx.fillStyle = "rgba(239, 68, 68, 0.85)";
+        ctx.fillRect(-W, -60, W * 2, 180);
+        ctx.fillStyle = "rgba(0,0,0,0.7)";
+        ctx.fillRect(-W, -200, W * 2, 130);
+        ctx.restore();
+        // タイプバッジ
+        ctx.fillStyle = "#fbbf24"; ctx.font = `bold 28px ${font}`;
+        ctx.shadowColor = "rgba(0,0,0,0.8)"; ctx.shadowBlur = 6;
+        ctx.fillText(postType, W / 2, H * 0.28);
+        // メインキーワード（大きく）
+        ctx.font = `bold 88px ${font}`; ctx.fillStyle = "#ffffff";
+        ctx.shadowBlur = 16;
+        ctx.fillText(keyword || "キーワード", W / 2, H / 2 + 15);
+        ctx.shadowBlur = 0;
+        if (overlayText) {
+          ctx.font = `bold 38px ${font}`; ctx.fillStyle = "rgba(255,255,255,0.95)";
+          ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 4;
+          wrapText(ctx, overlayText, W - 100).forEach((line, i) => ctx.fillText(line, W / 2, H * 0.6 + i * 46));
+          ctx.shadowBlur = 0;
+        }
+        // 院名
+        ctx.fillStyle = "#ffffff"; ctx.font = `bold 32px ${font}`;
+        ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 4;
+        ctx.fillText(profile.name || "", W / 2, H * 0.82);
+        ctx.font = `22px ${font}`; ctx.fillStyle = "rgba(255,255,255,0.8)";
+        ctx.fillText(profile.area || "", W / 2, H * 0.87);
+        ctx.shadowBlur = 0;
+        // CTA
+        if (ctaText) {
+          ctx.fillStyle = "#fbbf24"; ctx.fillRect(W * 0.2, H - 80, W * 0.6, 55);
+          ctx.beginPath();
+          ctx.roundRect(W * 0.2, H - 80, W * 0.6, 55, 8);
+          ctx.fillStyle = "#fbbf24"; ctx.fill();
+          ctx.font = `bold 26px ${font}`; ctx.fillStyle = "#1e293b";
+          ctx.fillText(ctaText, W / 2, H - 46);
+        }
+
+      } else if (template === "elegant") {
+        // ── エレガント（上下枠・落ち着いたトーン）──
+        ctx.textAlign = "center";
+        // 上部枠
+        ctx.fillStyle = "rgba(255,255,255,0.15)";
+        ctx.fillRect(40, 40, W - 80, H - 80);
+        ctx.strokeStyle = "rgba(255,255,255,0.6)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(60, 60, W - 120, H - 120);
+        // 装飾ライン
+        ctx.fillStyle = "#d4af37";
+        ctx.fillRect(W * 0.3, 100, W * 0.4, 2);
+        ctx.fillRect(W * 0.3, H - 100, W * 0.4, 2);
+        // テキスト
+        ctx.fillStyle = "#d4af37"; ctx.font = `18px ${font}`;
+        ctx.fillText(profile.area || "", W / 2, 140);
+        ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.font = `22px ${font}`;
+        ctx.fillText(postType, W / 2, 180);
+        ctx.fillStyle = "#ffffff"; ctx.font = `bold 64px ${font}`;
+        ctx.shadowColor = "rgba(0,0,0,0.4)"; ctx.shadowBlur = 8;
+        ctx.fillText(keyword || "キーワード", W / 2, H / 2 - 10);
+        ctx.shadowBlur = 0;
+        if (overlayText) {
+          ctx.font = `34px ${font}`; ctx.fillStyle = "rgba(255,255,255,0.85)";
+          wrapText(ctx, overlayText, W - 200).forEach((line, i) => ctx.fillText(line, W / 2, H / 2 + 50 + i * 42));
+        }
+        ctx.fillStyle = "#d4af37"; ctx.font = `bold 28px ${font}`;
+        ctx.fillText(profile.name || "", W / 2, H * 0.78);
+        // CTA
+        if (ctaText) {
+          ctx.fillStyle = "rgba(212, 175, 55, 0.9)"; ctx.font = `bold 26px ${font}`;
+          ctx.fillText(ctaText, W / 2, H - 130);
+        }
+      }
     },
-    [profile, postType, keyword, overlayText, ctaText, wrapText]
+    [profile, postType, keyword, overlayText, ctaText, wrapText, template]
   );
 
   // ---------- Canvas描画 ----------
@@ -215,6 +359,24 @@ export default function GbpImageGenerator({ profile }: Props) {
 
     const selectedImg = images.find((img) => img.id === selectedImageId);
 
+    // テンプレート別の背景グラデーション色
+    const gradientColors: Record<DesignTemplate, [string, string]> = {
+      classic: ["#ea580c", "#f59e0b"],
+      modern: ["#1e3a5f", "#2563eb"],
+      minimal: ["#f8fafc", "#e2e8f0"],
+      bold: ["#991b1b", "#dc2626"],
+      elegant: ["#1a1a2e", "#16213e"],
+    };
+
+    // テンプレート別のオーバーレイ強度
+    const overlayOpacity: Record<DesignTemplate, number> = {
+      classic: 0.35,
+      modern: 0.45,
+      minimal: 0.15,
+      bold: 0.5,
+      elegant: 0.55,
+    };
+
     if (selectedImg) {
       const img = new Image();
       img.onload = () => {
@@ -225,18 +387,17 @@ export default function GbpImageGenerator({ profile }: Props) {
         const sy = (img.height - sh) / 2;
         ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
 
-        // 半透明オーバーレイ
-        ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+        ctx.fillStyle = `rgba(0, 0, 0, ${overlayOpacity[template]})`;
         ctx.fillRect(0, 0, W, H);
 
         drawTextOverlay(ctx, W, H);
       };
       img.src = selectedImg.dataUrl;
     } else {
-      // グラデーション背景
+      const colors = gradientColors[template];
       const grad = ctx.createLinearGradient(0, 0, W, H);
-      grad.addColorStop(0, "#ea580c");
-      grad.addColorStop(1, "#f59e0b");
+      grad.addColorStop(0, colors[0]);
+      grad.addColorStop(1, colors[1]);
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, W, H);
 
@@ -250,7 +411,7 @@ export default function GbpImageGenerator({ profile }: Props) {
 
       drawTextOverlay(ctx, W, H);
     }
-  }, [selectedImageId, images, drawTextOverlay]);
+  }, [selectedImageId, images, drawTextOverlay, template]);
 
   const handleGenerate = () => {
     setGenerated(true);
@@ -442,6 +603,27 @@ export default function GbpImageGenerator({ profile }: Props) {
                       }`}
                     >
                       {type}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* デザインテンプレート */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">デザインテンプレート</label>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {TEMPLATE_OPTIONS.map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() => setTemplate(t.key)}
+                      className={`px-3 py-2.5 rounded-lg text-left transition-all border ${
+                        template === t.key
+                          ? "bg-orange-600 text-white border-orange-600 shadow-md"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:bg-orange-50"
+                      }`}
+                    >
+                      <span className="text-xs font-bold block">{t.label}</span>
+                      <span className={`text-[10px] ${template === t.key ? "text-orange-100" : "text-gray-400"}`}>{t.desc}</span>
                     </button>
                   ))}
                 </div>

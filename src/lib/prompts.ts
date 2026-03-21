@@ -62,6 +62,23 @@ function buildOwnerInfo(profile: BusinessProfile): string {
   return parts.length > 0 ? "\n" + parts.join("\n") : "";
 }
 
+function buildClinicContext(profile: BusinessProfile): string {
+  const sections = [];
+  if (profile.strengths) {
+    sections.push(`\n【院の強み・差別化ポイント】\n${profile.strengths}`);
+  }
+  if (profile.experience) {
+    sections.push(`\n【経験・実績・資格】\n${profile.experience}`);
+  }
+  if (profile.reviews) {
+    sections.push(`\n【患者の口コミ・声（実際の口コミを参考に自然に盛り込むこと）】\n${profile.reviews}`);
+  }
+  if (sections.length > 0) {
+    return "\n" + sections.join("\n") + "\n\n※ 上記の強み・実績・口コミの内容を記事に自然に反映させてください。口コミは「患者様からは〜という声をいただいています」等の形で引用できます。";
+  }
+  return "";
+}
+
 function buildCrossLinkRule(contentType: string, profile: BusinessProfile, blogUrl?: string): string {
   const urls = profile.urls || {};
   const hasAnyUrl = blogUrl || urls.websiteUrl || urls.youtubeChannelUrl || urls.instagramUrl || urls.lineUrl || urls.bookingUrl || urls.googleMapUrl;
@@ -143,7 +160,7 @@ export function noteArticlePrompt(profile: BusinessProfile, keyword: string, top
 - 院名: ${profile.name}
 - エリア: ${profile.area}
 - 業種: ${profile.category}
-- 説明: ${profile.description}${buildOwnerInfo(profile)}${buildNoteProfileInfo(profile)}
+- 説明: ${profile.description}${buildOwnerInfo(profile)}${buildNoteProfileInfo(profile)}${buildClinicContext(profile)}
 
 【記事の条件】
 - キーワード: 「${profile.area} ${keyword}」
@@ -201,7 +218,7 @@ MEO順位を上げるための最適化された投稿文を作成してくだ�
 【治療院情報】
 - 院名: ${profile.name}
 - エリア: ${profile.area}
-- 業種: ${profile.category}${buildOwnerInfo(profile)}
+- 業種: ${profile.category}${buildOwnerInfo(profile)}${buildClinicContext(profile)}
 
 【投稿条件】
 - キーワード: ${keyword}
@@ -234,7 +251,7 @@ export function faqPrompt(profile: BusinessProfile, keyword: string): string {
 - 院名: ${profile.name}
 - エリア: ${profile.area}
 - 業種: ${profile.category}
-- 説明: ${profile.description}
+- 説明: ${profile.description}${buildClinicContext(profile)}
 
 【FAQ条件】
 - 症状キーワード: ${keyword}
@@ -299,7 +316,7 @@ export function blogPostPrompt(profile: BusinessProfile, keyword: string, topic:
 - 院名: ${profile.name}
 - エリア: ${profile.area}
 - 業種: ${profile.category}
-- 説明: ${profile.description}${buildOwnerInfo(profile)}
+- 説明: ${profile.description}${buildOwnerInfo(profile)}${buildClinicContext(profile)}
 
 【記事の条件】
 - テーマ: ${topic}
@@ -387,7 +404,7 @@ export function blogPostWithFaqPrompt(profile: BusinessProfile, keyword: string,
 - 院名: ${profile.name}
 - エリア: ${profile.area}
 - 業種: ${profile.category}
-- 説明: ${profile.description}${buildOwnerInfo(profile)}
+- 説明: ${profile.description}${buildOwnerInfo(profile)}${buildClinicContext(profile)}
 
 【記事の条件】
 - テーマ: ${topic}
@@ -530,7 +547,7 @@ export function faqWithBlogUrlPrompt(profile: BusinessProfile, keyword: string, 
 - 院名: ${profile.name}
 - エリア: ${profile.area}
 - 業種: ${profile.category}
-- 説明: ${profile.description}${buildOwnerInfo(profile)}
+- 説明: ${profile.description}${buildOwnerInfo(profile)}${buildClinicContext(profile)}
 
 【FAQ条件】
 - 症状キーワード: ${keyword}
@@ -567,7 +584,7 @@ export function faqIndividualListPrompt(profile: BusinessProfile, keyword: strin
 - 院名: ${profile.name}
 - エリア: ${profile.area}
 - 業種: ${profile.category}
-- 説明: ${profile.description}${buildOwnerInfo(profile)}
+- 説明: ${profile.description}${buildOwnerInfo(profile)}${buildClinicContext(profile)}
 
 【FAQ条件】
 - 症状キーワード: ${keyword}
@@ -616,7 +633,7 @@ export function gbpWithBlogUrlPrompt(profile: BusinessProfile, keyword: string, 
 【治療院情報】
 - 院名: ${profile.name}
 - エリア: ${profile.area}
-- 業種: ${profile.category}${buildOwnerInfo(profile)}
+- 業種: ${profile.category}${buildOwnerInfo(profile)}${buildClinicContext(profile)}
 
 【投稿条件】
 - キーワード: ${keyword}
@@ -656,7 +673,7 @@ export function noteWithBlogUrlPrompt(profile: BusinessProfile, keyword: string,
 - 院名: ${profile.name}
 - エリア: ${profile.area}
 - 業種: ${profile.category}
-- 説明: ${profile.description}${buildOwnerInfo(profile)}${buildNoteProfileInfo(profile)}
+- 説明: ${profile.description}${buildOwnerInfo(profile)}${buildNoteProfileInfo(profile)}${buildClinicContext(profile)}
 
 【記事の条件】
 - キーワード: 「${profile.area} ${keyword}」

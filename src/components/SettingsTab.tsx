@@ -317,6 +317,9 @@ export default function SettingsTab({
                   noteProfile: data.noteProfile,
                   urls: data.urls,
                   wordpress: data.wordpress,
+                  strengths: data.strengths,
+                  experience: data.experience,
+                  reviews: data.reviews,
                 };
                 onAddClinic(newClinic);
                 setShowAddForm(false);
@@ -396,6 +399,9 @@ function ClinicEditForm({
   const [ownerName, setOwnerName] = useState(clinic?.ownerName || "");
   const [specialty, setSpecialty] = useState(clinic?.specialty || "");
   const [keywordsText, setKeywordsText] = useState(clinic?.keywords.join("\n") || "");
+  const [strengths, setStrengths] = useState(clinic?.strengths || "");
+  const [experience, setExperience] = useState(clinic?.experience || "");
+  const [reviews, setReviews] = useState(clinic?.reviews || "");
 
   const CATEGORY_OPTIONS = [
     "整体院", "鍼灸院", "整骨院", "接骨院",
@@ -480,7 +486,7 @@ function ClinicEditForm({
     const categories = selectedCategories.length > 0 ? selectedCategories : ["整体院"];
     const category = categories.join("・");
 
-    onSave({ name, area, category, categories, description, ownerName, specialty, keywords, urls, wordpress, noteProfile });
+    onSave({ name, area, category, categories, description, ownerName, specialty, keywords, urls, wordpress, noteProfile, strengths: strengths || undefined, experience: experience || undefined, reviews: reviews || undefined });
   };
 
   const testWordPress = async () => {
@@ -632,6 +638,32 @@ function ClinicEditForm({
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
           placeholder="例：渋谷区で肩こり・腰痛を専門にしている整体院"
           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+      </div>
+
+      {/* 院の強み */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">院の強み・差別化ポイント</label>
+        <textarea value={strengths} onChange={(e) => setStrengths(e.target.value)} rows={3}
+          placeholder={"例：\n・神経整体×内臓×骨格×東洋医学の独自メソッド\n・完全予約制で1人120分じっくり対応\n・重症・難治性の症状に特化"}
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+        <p className="text-xs text-gray-400 mt-0.5">記事生成時に自動で反映されます</p>
+      </div>
+
+      {/* 経験・実績 */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">経験・実績・資格</label>
+        <textarea value={experience} onChange={(e) => setExperience(e.target.value)} rows={3}
+          placeholder={"例：\n・施術歴15年、延べ30,000人以上の施術実績\n・柔道整復師・鍼灸師 国家資格保有\n・○○セミナー認定講師"}
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+      </div>
+
+      {/* 口コミ */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">代表的な口コミ・患者の声</label>
+        <textarea value={reviews} onChange={(e) => setReviews(e.target.value)} rows={4}
+          placeholder={"例：\n「どこに行っても変わらなかった腰痛が3回で楽になりました」（60代女性）\n「丁寧な説明で安心して施術を受けられました」（40代男性）\n「長年の頭痛が嘘のように改善」（30代女性）"}
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+        <p className="text-xs text-gray-400 mt-0.5">Googleマップの口コミから代表的なものを入力すると、記事の信頼性が向上します</p>
       </div>
 
       {/* キーワード */}

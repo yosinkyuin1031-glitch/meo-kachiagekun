@@ -78,6 +78,9 @@ function dbClinicToProfile(row: Record<string, unknown>): ClinicProfile {
     noteProfile: row.note_profile && Object.keys(row.note_profile as object).length > 0 ? row.note_profile as ClinicProfile["noteProfile"] : undefined,
     urls: row.urls && Object.keys(row.urls as object).length > 0 ? row.urls as ClinicProfile["urls"] : undefined,
     wordpress: row.wordpress && Object.keys(row.wordpress as object).length > 0 ? row.wordpress as ClinicProfile["wordpress"] : undefined,
+    strengths: (row.strengths as string) || undefined,
+    experience: (row.experience as string) || undefined,
+    reviews: (row.reviews as string) || undefined,
   };
 }
 
@@ -100,6 +103,9 @@ export async function saveClinics(clinics: ClinicProfile[]): Promise<void> {
     note_profile: c.noteProfile || {},
     urls: c.urls || {},
     wordpress: c.wordpress || {},
+    strengths: c.strengths || "",
+    experience: c.experience || "",
+    reviews: c.reviews || "",
   }));
   await supabase().from("meo_clinics").insert(rows);
 }
@@ -120,6 +126,9 @@ export async function addClinic(clinic: ClinicProfile): Promise<void> {
     note_profile: clinic.noteProfile || {},
     urls: clinic.urls || {},
     wordpress: clinic.wordpress || {},
+    strengths: clinic.strengths || "",
+    experience: clinic.experience || "",
+    reviews: clinic.reviews || "",
   });
 }
 
@@ -137,6 +146,9 @@ export async function updateClinic(id: string, updates: Partial<ClinicProfile>):
   if (updates.noteProfile !== undefined) dbUpdates.note_profile = updates.noteProfile || {};
   if (updates.urls !== undefined) dbUpdates.urls = updates.urls || {};
   if (updates.wordpress !== undefined) dbUpdates.wordpress = updates.wordpress || {};
+  if (updates.strengths !== undefined) dbUpdates.strengths = updates.strengths;
+  if (updates.experience !== undefined) dbUpdates.experience = updates.experience;
+  if (updates.reviews !== undefined) dbUpdates.reviews = updates.reviews;
 
   await supabase()
     .from("meo_clinics")
@@ -178,6 +190,9 @@ export async function getBusinessProfile(): Promise<BusinessProfile> {
     noteProfile: clinic.noteProfile,
     urls: clinic.urls,
     wordpress: clinic.wordpress,
+    strengths: clinic.strengths,
+    experience: clinic.experience,
+    reviews: clinic.reviews,
   };
 }
 
@@ -262,6 +277,35 @@ export async function updateContent(id: string, updates: Partial<GeneratedConten
     .update(dbUpdates)
     .eq("id", id)
     .eq("user_id", userId);
+}
+
+// ─── キーワード別の既存コンテンツチェック ─────
+export async function getContentsByKeyword(keyword: string): Promise<GeneratedContent[]> {
+  try {
+    const userId = await getUserId();
+    const { data } = await supabase()
+      .from("meo_contents")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("keyword", keyword)
+      .order("created_at", { ascending: false });
+
+    if (!data) return [];
+    return data.map((row) => ({
+      id: row.id,
+      type: row.type,
+      title: row.title || "",
+      content: row.content || "",
+      keyword: row.keyword || "",
+      createdAt: row.created_at,
+      clinicId: row.clinic_id || undefined,
+      wpPostId: row.wp_post_id || undefined,
+      wpPostUrl: row.wp_post_url || undefined,
+      notePostUrl: row.note_post_url || undefined,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 // ─── 生成フィードバック ──────────────────────
