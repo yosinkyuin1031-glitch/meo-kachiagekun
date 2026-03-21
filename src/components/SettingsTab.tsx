@@ -644,7 +644,7 @@ function ClinicEditForm({
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">院の強み・差別化ポイント</label>
         <textarea value={strengths} onChange={(e) => setStrengths(e.target.value)} rows={3}
-          placeholder={"例：\n・神経整体×内臓×骨格×東洋医学の独自メソッド\n・完全予約制で1人120分じっくり対応\n・重症・難治性の症状に特化"}
+          placeholder={"例：\n・骨格矯正×筋膜リリースの独自メソッド\n・完全予約制で1人60分じっくり対応\n・肩こり・腰痛の根本改善に特化"}
           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
         <p className="text-xs text-gray-400 mt-0.5">記事生成時に自動で反映されます</p>
       </div>
@@ -733,9 +733,9 @@ function ClinicEditForm({
         <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <p className="text-xs font-medium text-amber-800 mb-1">キーワードの入れ方のコツ</p>
           <ul className="text-xs text-amber-700 space-y-0.5 list-disc list-inside">
-            <li>「エリア名＋症状」の組み合わせが基本（例：長居 腰痛）</li>
+            <li>「エリア名＋症状」の組み合わせが基本（例：渋谷 腰痛）</li>
             <li>エリアは区名・駅名・地域名など複数パターンで入れると効果的</li>
-            <li>症状だけ（腰痛）やエリアだけ（長居 整体）もOK</li>
+            <li>症状だけ（腰痛）やエリアだけ（渋谷 整体）もOK</li>
             <li>MEOチェッカーで実際に順位を確認しながら調整しましょう</li>
           </ul>
         </div>
@@ -790,7 +790,7 @@ function ClinicEditForm({
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">note表示名（引用名）</label>
                 <input type="text" value={noteDisplayName} onChange={(e) => setNoteDisplayName(e.target.value)}
-                  placeholder="例：大口陽平｜大口神経整体院"
+                  placeholder="例：山田太郎｜やまだ整体院"
                   className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
               </div>
               <div>
@@ -798,7 +798,7 @@ function ClinicEditForm({
                 <div className="flex items-center">
                   <span className="text-sm text-gray-500 mr-1">@</span>
                   <input type="text" value={noteId} onChange={(e) => setNoteId(e.target.value)}
-                    placeholder="例：oguchi_seitai"
+                    placeholder="例：yamada_seitai"
                     className="flex-1 px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
                 </div>
               </div>
@@ -807,7 +807,7 @@ function ClinicEditForm({
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">自己紹介文（140文字以内）</label>
               <textarea value={noteBio} onChange={(e) => setNoteBio(e.target.value)} rows={2}
-                placeholder="例：大阪・長居で神経整体院を経営。重症・慢性の痛みやしびれ専門。どこに行っても変わらなかった方の「最後の砦」を目指しています。"
+                placeholder="例：東京・世田谷で整体院を経営。肩こり・腰痛専門。根本改善を目指す施術で、慢性的なお悩みに向き合っています。"
                 className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500 resize-none" />
               <p className="text-xs text-gray-400 mt-0.5">{noteBio.length}/140文字</p>
             </div>
@@ -815,7 +815,7 @@ function ClinicEditForm({
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">詳細自己紹介（記事末尾の著者情報等に使用）</label>
               <textarea value={noteLongBio} onChange={(e) => setNoteLongBio(e.target.value)} rows={3}
-                placeholder="例：大口神経整体院 院長・大口陽平。神経整体×内臓×骨格×東洋医学を掛け合わせ、病院でも他の治療院でも改善しなかった重症・難治性の症状に向き合います。「痛みで止まった人生に、もう一度自由を」をモットーに、完全予約制で一人ひとりに120分じっくり向き合います。"
+                placeholder="例：やまだ整体院 院長・山田太郎。骨格矯正×筋膜リリースを組み合わせた独自の施術で、肩こり・腰痛・姿勢の改善に取り組んでいます。完全予約制で一人ひとりに丁寧に向き合います。"
                 className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500 resize-none" />
             </div>
 
@@ -829,14 +829,14 @@ function ClinicEditForm({
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">記事末尾の定型文</label>
               <textarea value={noteArticleFooter} onChange={(e) => setNoteArticleFooter(e.target.value)} rows={3}
-                placeholder={"例：\n---\n✍️ この記事を書いた人\n大口陽平｜大口神経整体院 院長\n📍大阪市住吉区長居\n📞 完全予約制｜初回は90〜120分\n🔗 ホームページはこちら → https://..."}
+                placeholder={"例：\n---\nこの記事を書いた人\n山田太郎｜やまだ整体院 院長\n東京都世田谷区\n完全予約制\nホームページはこちら → https://..."}
                 className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500 resize-none" />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">よく使うハッシュタグ（カンマ区切り）</label>
               <input type="text" value={noteHashtags} onChange={(e) => setNoteHashtags(e.target.value)}
-                placeholder="例：整体, 神経整体, 腰痛, 坐骨神経痛, 長居, 大阪整体, 慢性痛"
+                placeholder="例：整体, 腰痛, 肩こり, 骨盤矯正, 世田谷整体"
                 className="w-full px-3 py-2 border border-green-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500" />
             </div>
           </div>
