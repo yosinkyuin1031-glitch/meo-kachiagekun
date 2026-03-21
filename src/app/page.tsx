@@ -429,8 +429,57 @@ function DashboardTab({
     indigo: { bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
   };
 
+  // 初回ユーザー向けセットアップ状態
+  const setupSteps = useMemo(() => {
+    if (!activeClinic) return null;
+    const steps = [
+      { label: "院情報を登録", done: !!activeClinic.name, action: "settings" as Tab },
+      { label: "キーワードを設定", done: activeClinic.keywords.length > 0, action: "settings" as Tab },
+      { label: "コンテンツを生成", done: stats.total > 0, action: "bulk" as Tab },
+    ];
+    const allDone = steps.every(s => s.done);
+    return allDone ? null : steps;
+  }, [activeClinic, stats.total]);
+
   return (
     <div className="space-y-6">
+      {/* 初回セットアップガイド */}
+      {setupSteps && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-5 border border-blue-200">
+          <h3 className="text-base font-bold text-blue-800 mb-1">はじめてのセットアップ</h3>
+          <p className="text-xs text-blue-600 mb-4">以下の手順を順番に進めてください。10分程度で完了します。</p>
+          <div className="space-y-2">
+            {setupSteps.map((step, i) => (
+              <button
+                key={i}
+                onClick={() => onNavigate(step.action)}
+                className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all ${
+                  step.done
+                    ? "bg-white/60 border border-green-200"
+                    : "bg-white border border-blue-200 hover:border-blue-400 shadow-sm"
+                }`}
+              >
+                {step.done ? (
+                  <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                  </div>
+                ) : (
+                  <div className="w-6 h-6 rounded-full border-2 border-blue-400 flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-bold text-blue-500">{i + 1}</span>
+                  </div>
+                )}
+                <span className={`text-sm font-medium ${step.done ? "text-green-700 line-through" : "text-gray-800"}`}>
+                  {step.label}
+                </span>
+                {!step.done && (
+                  <span className="ml-auto text-xs text-blue-500 font-medium">設定へ →</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {activeClinic && (
         <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
           <div className="flex items-center gap-4">

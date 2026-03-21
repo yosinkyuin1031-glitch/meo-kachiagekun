@@ -720,75 +720,80 @@ export default function BulkGenerator({ profile }: Props) {
       {/* 進捗表示 */}
       {progressMessage && (
         <div className="bg-white rounded-xl shadow-sm p-6">
-          <div className="flex items-center gap-3">
-            {isRunning && (
+          <div className="flex items-center gap-3 mb-4">
+            {isRunning ? (
               <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+            ) : (
+              <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+              </div>
             )}
-            <span
-              className={`text-sm font-medium ${
-                isRunning ? "text-blue-700" : "text-green-700"
-              }`}
-            >
+            <span className={`text-sm font-medium ${isRunning ? "text-blue-700" : "text-green-700"}`}>
               {progressMessage}
             </span>
           </div>
-          {/* Step indicators */}
-          {isRunning && (
-            <div className="mt-3 flex gap-2 flex-wrap">
-              {contentOptions.faq && (
-                <span
-                  className={`text-xs px-2 py-1 rounded-full ${
-                    faqItems.length > 0
-                      ? "bg-green-100 text-green-700"
-                      : progressMessage.includes("FAQ")
-                      ? "bg-blue-100 text-blue-700 animate-pulse"
-                      : "bg-gray-100 text-gray-500"
-                  }`}
-                >
-                  FAQ
-                </span>
-              )}
-              {contentOptions.blog && (
-                <span
-                  className={`text-xs px-2 py-1 rounded-full ${
-                    blogHtml
-                      ? "bg-green-100 text-green-700"
-                      : progressMessage.includes("ブログ") || progressMessage.includes("WordPress") || progressMessage.includes("SEO")
-                      ? "bg-blue-100 text-blue-700 animate-pulse"
-                      : "bg-gray-100 text-gray-500"
-                  }`}
-                >
-                  ブログ
-                </span>
-              )}
-              {contentOptions.gbp && (
-                <span
-                  className={`text-xs px-2 py-1 rounded-full ${
-                    gbpPost
-                      ? "bg-green-100 text-green-700"
-                      : progressMessage.includes("GBP")
-                      ? "bg-blue-100 text-blue-700 animate-pulse"
-                      : "bg-gray-100 text-gray-500"
-                  }`}
-                >
-                  GBP
-                </span>
-              )}
-              {contentOptions.note && (
-                <span
-                  className={`text-xs px-2 py-1 rounded-full ${
-                    noteArticle
-                      ? "bg-green-100 text-green-700"
-                      : progressMessage.includes("note")
-                      ? "bg-blue-100 text-blue-700 animate-pulse"
-                      : "bg-gray-100 text-gray-500"
-                  }`}
-                >
-                  note
-                </span>
-              )}
-            </div>
-          )}
+
+          {/* ステップ別プログレス */}
+          {(() => {
+            const steps = [
+              ...(contentOptions.faq ? [{ key: "faq", label: "FAQ生成", done: faqItems.length > 0, active: progressMessage.includes("FAQ") }] : []),
+              ...(contentOptions.blog ? [{ key: "blog", label: "ブログ記事", done: !!blogHtml, active: progressMessage.includes("ブログ") || progressMessage.includes("SEO") }] : []),
+              ...(contentOptions.blog && hasWordPress && wpAutoPost ? [{ key: "wp", label: "WordPress投稿", done: !!blogWpUrl, active: progressMessage.includes("WordPress") }] : []),
+              ...(contentOptions.gbp ? [{ key: "gbp", label: "GBP投稿文", done: !!gbpPost, active: progressMessage.includes("GBP") }] : []),
+              ...(contentOptions.note ? [{ key: "note", label: "note記事", done: !!noteArticle, active: progressMessage.includes("note") }] : []),
+            ];
+            const doneCount = steps.filter(s => s.done).length;
+            const progress = steps.length > 0 ? Math.round((doneCount / steps.length) * 100) : 0;
+
+            return (
+              <div className="space-y-3">
+                {/* プログレスバー */}
+                {isRunning && (
+                  <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-700 ease-out"
+                      style={{ width: `${Math.max(progress, isRunning ? 5 : 0)}%` }}
+                    />
+                  </div>
+                )}
+
+                {/* ステップ一覧 */}
+                <div className="grid gap-2">
+                  {steps.map((step, i) => (
+                    <div key={step.key} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all ${
+                      step.done ? "bg-green-50" : step.active ? "bg-blue-50" : "bg-gray-50"
+                    }`}>
+                      {step.done ? (
+                        <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                        </div>
+                      ) : step.active ? (
+                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                      ) : (
+                        <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center flex-shrink-0">
+                          <span className="text-[10px] text-gray-400 font-bold">{i + 1}</span>
+                        </div>
+                      )}
+                      <span className={`font-medium ${
+                        step.done ? "text-green-700" : step.active ? "text-blue-700" : "text-gray-400"
+                      }`}>{step.label}</span>
+                      {step.done && <span className="text-xs text-green-500 ml-auto">完了</span>}
+                      {step.active && <span className="text-xs text-blue-500 ml-auto animate-pulse">処理中...</span>}
+                    </div>
+                  ))}
+                </div>
+
+                {/* 完了時のサマリー */}
+                {!isRunning && progressMessage === "完了！" && (
+                  <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-700 font-medium">
+                      全{doneCount}件のコンテンツを生成しました。下にスクロールして結果を確認してください。
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

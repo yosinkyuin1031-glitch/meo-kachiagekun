@@ -77,6 +77,7 @@ export default function GbpImageGenerator({ profile }: Props) {
   // ライブラリ系
   const [uploadCategory, setUploadCategory] = useState<ImageCategory>("施術風景");
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 生成系
@@ -122,7 +123,7 @@ export default function GbpImageGenerator({ profile }: Props) {
       }
       setImages(await getGbpImages());
     } catch {
-      alert("画像のアップロードに失敗しました");
+      setUploadError("画像のアップロードに失敗しました。ファイル形式やサイズを確認してください。");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -510,6 +511,13 @@ export default function GbpImageGenerator({ profile }: Props) {
                 </p>
               </label>
             </div>
+
+            {uploadError && (
+              <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center justify-between">
+                <p className="text-xs text-red-600">{uploadError}</p>
+                <button onClick={() => setUploadError("")} className="text-red-400 hover:text-red-600 text-xs ml-2 flex-shrink-0">✕</button>
+              </div>
+            )}
 
             <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-xs text-blue-700">
