@@ -3,5 +3,11 @@
     "src/app/api/**/*.ts": {
       "maxDuration": 120
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/weekly-reminder",
+      "schedule": "0 0 * * 1"
+    }
+  ]
 }

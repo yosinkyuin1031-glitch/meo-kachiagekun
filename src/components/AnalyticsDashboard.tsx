@@ -8,7 +8,8 @@ import {
   AreaChart, Area, PieChart, Pie, Cell,
 } from "recharts";
 import {
-  format, subDays, startOfDay, startOfWeek, endOfWeek, isWithinInterval,
+  format, subDays, startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
+  isWithinInterval, subWeeks,
 } from "date-fns";
 import { ja } from "date-fns/locale";
 
@@ -161,6 +162,50 @@ export default function AnalyticsDashboard() {
     };
   }, [contents]);
 
+  // ─── 今月の投稿数 ──────────────────────────
+
+  const monthlyStats = useMemo(() => {
+    const now = new Date();
+    const mStart = startOfMonth(now);
+    const mEnd = endOfMonth(now);
+    const thisMonth = contents.filter((c) => {
+      const d = new Date(c.createdAt);
+      return isWithinInterval(d, { start: mStart, end: mEnd });
+    });
+    const total = thisMonth.length;
+    const byType: Record<string, number> = {};
+    thisMonth.forEach((c) => {
+      const label = CONTENT_TYPE_LABELS[c.type] || c.type;
+      byType[label] = (byType[label] || 0) + 1;
+    });
+    return { total, byType };
+  }, [contents]);
+
+  // ─── 連続投稿週数 ─────────────────────────
+
+  const consecutiveWeeks = useMemo(() => {
+    const now = new Date();
+    let streak = 0;
+    let weekCursor = startOfWeek(now, { locale: ja });
+
+    // 最大52週（1年）まで遡る
+    for (let i = 0; i < 52; i++) {
+      const wStart = weekCursor;
+      const wEnd = endOfWeek(weekCursor, { locale: ja });
+      const hasPost = contents.some((c) => {
+        const d = new Date(c.createdAt);
+        return isWithinInterval(d, { start: wStart, end: wEnd });
+      });
+      if (hasPost) {
+        streak++;
+        weekCursor = subWeeks(weekCursor, 1);
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }, [contents]);
+
   // ─── レンダリング ──────────────────────────
 
   const isEmpty = contents.length === 0;
@@ -174,6 +219,79 @@ export default function AnalyticsDashboard() {
           {clinicName} の MEO 施策状況を一覧で確認
         </p>
       </div>
+
+      {/* ═══ 0. 今月の投稿数 & 連続投稿週数 ═══ */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 今月の投稿数 */}
+        <div className={`rounded-2xl shadow-sm border p-6 ${
+          monthlyStats.total > 0
+            ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200"
+            : "bg-gradient-to-br from-red-50 to-red-100 border-red-200"
+        }`}>
+          <h3 className={`text-sm font-semibold mb-2 ${
+            monthlyStats.total > 0 ? "text-emerald-700" : "text-red-700"
+          }`}>
+            今月の投稿数
+          </h3>
+          <div className={`text-5xl font-extrabold ${
+            monthlyStats.total > 0 ? "text-emerald-600" : "text-red-500"
+          }`}>
+            {monthlyStats.total}<span className="text-lg font-medium ml-1">本</span>
+          </div>
+          {monthlyStats.total === 0 && (
+            <p className="text-xs text-red-500 mt-2">
+              今月はまだ投稿がありません。コンテンツを生成しましょう!
+            </p>
+          )}
+          {Object.keys(monthlyStats.byType).length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {Object.entries(monthlyStats.byType).map(([label, count]) => (
+                <span key={label} className="inline-block px-2 py-0.5 bg-white/70 rounded text-xs text-emerald-800 font-medium">
+                  {label}: {count}本
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 連続投稿週数 */}
+        <div className={`rounded-2xl shadow-sm border p-6 ${
+          consecutiveWeeks > 0
+            ? "bg-gradient-to-br from-orange-50 to-amber-100 border-amber-200"
+            : "bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200"
+        }`}>
+          <h3 className={`text-sm font-semibold mb-2 ${
+            consecutiveWeeks > 0 ? "text-amber-700" : "text-gray-500"
+          }`}>
+            連続投稿週数
+          </h3>
+          <div className="flex items-baseline gap-2">
+            <span className={`text-5xl font-extrabold ${
+              consecutiveWeeks > 0 ? "text-amber-600" : "text-gray-400"
+            }`}>
+              {consecutiveWeeks}
+            </span>
+            <span className={`text-lg font-medium ${
+              consecutiveWeeks > 0 ? "text-amber-600" : "text-gray-400"
+            }`}>
+              週連続
+            </span>
+          </div>
+          {consecutiveWeeks > 0 ? (
+            <p className="text-xs text-amber-600 mt-2 font-medium">
+              {consecutiveWeeks >= 4
+                ? "素晴らしい継続力です! この調子で続けましょう!"
+                : consecutiveWeeks >= 2
+                ? "いい調子です! 継続は力なり!"
+                : "まずは連続記録スタート! 来週も投稿しましょう!"}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-400 mt-2">
+              今週投稿すると連続記録がスタートします
+            </p>
+          )}
+        </div>
+      </section>
 
       {/* ═══ 1. 生成コンテンツ統計 ═══ */}
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">

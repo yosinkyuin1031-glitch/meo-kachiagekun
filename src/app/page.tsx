@@ -24,6 +24,7 @@ import SearchConsolePanel from "@/components/SearchConsolePanel";
 import ChecklistTab from "@/components/ChecklistTab";
 import ReviewReplyGenerator from "@/components/ReviewReplyGenerator";
 import LocalDataMigration, { hasLocalData } from "@/components/LocalDataMigration";
+import WeeklyReminder from "@/components/WeeklyReminder";
 
 type Tab = "dashboard" | "bulk" | "checklist" | "ranking" | "history" | "settings";
 
@@ -270,6 +271,11 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      {/* 週次リマインドバナー */}
+      <div className="max-w-5xl mx-auto px-4 pt-4">
+        <WeeklyReminder />
+      </div>
 
       {/* タブ */}
       <div className="max-w-5xl mx-auto px-4 pt-4">
