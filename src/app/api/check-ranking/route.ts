@@ -135,7 +135,8 @@ export async function POST(request: NextRequest) {
 
     for (const keyword of keywords as string[]) {
       // キーワードにエリア名が含まれていればそのまま、なければエリア名を付加
-      const query = keyword;
+      const hasArea = keyword.includes(area) || area.split(/[都道府県市区町村]/).some((part: string) => part && keyword.includes(part));
+      const query = hasArea ? keyword : `${area} ${keyword}`;
 
       try {
         const places = await searchWithSerpApi(query, apiKey);

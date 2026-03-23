@@ -11,7 +11,7 @@ interface Props {
   profile: BusinessProfile;
 }
 
-type SubTab = "check" | "history";
+type SubTab = "check" | "history" | "strategy";
 
 /** キーワードごとの最新 vs 前回比較データ */
 interface KeywordComparison {
@@ -182,7 +182,7 @@ export default function RankingChecker({ profile }: Props) {
       return;
     }
     if (!profile.keywords || profile.keywords.length === 0) {
-      setError("設定画面でMEOキーワードを登録してください");
+      setError("設定画面で症状キーワードを登録してください");
       return;
     }
 
@@ -297,6 +297,16 @@ export default function RankingChecker({ profile }: Props) {
           }`}
         >
           📊 順位推移
+        </button>
+        <button
+          onClick={() => setSubTab("strategy")}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            subTab === "strategy"
+              ? "bg-orange-600 text-white"
+              : "bg-white text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          🎯 戦略分析
         </button>
       </div>
 
@@ -453,6 +463,14 @@ export default function RankingChecker({ profile }: Props) {
         </div>
       )}
 
+      {subTab === "strategy" && (
+        <StrategyPanel
+          history={history}
+          keywords={profile.keywords || []}
+          area={profile.area}
+        />
+      )}
+
       {subTab === "history" && (
         <div className="space-y-6">
           {/* 最新 vs 前回 比較カード */}
@@ -492,6 +510,186 @@ export default function RankingChecker({ profile }: Props) {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+/** A/B/C戦略分析パネル */
+function StrategyPanel({ history, keywords, area }: { history: RankingHistory[]; keywords: string[]; area: string }) {
+  const comparisons = buildComparisons(history, keywords);
+
+  if (comparisons.length === 0) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+        <p className="text-4xl mb-3">📊</p>
+        <h3 className="font-bold text-gray-800 mb-2">まだ順位データがありません</h3>
+        <p className="text-sm text-gray-500">「ランキングチェック」タブで一括チェックを実行してください</p>
+      </div>
+    );
+  }
+
+  type Grade = "A" | "B" | "C";
+  interface GradedKeyword {
+    keyword: string;
+    rank: number | null;
+    grade: Grade;
+    action: string;
+    priority: number;
+    diff: number | null;
+  }
+
+  const graded: GradedKeyword[] = comparisons.map((comp) => {
+    const rank = comp.latestRank;
+    if (rank !== null && rank <= 3) {
+      return { keyword: comp.keyword, rank, grade: "A" as Grade, action: "維持：月1〜2回GBP投稿", priority: 3, diff: comp.diff };
+    }
+    if (rank !== null && rank <= 10) {
+      return { keyword: comp.keyword, rank, grade: "B" as Grade, action: "集中攻め：週1〜2回GBP投稿＋ブログ＋FAQ", priority: 1, diff: comp.diff };
+    }
+    return { keyword: comp.keyword, rank, grade: "C" as Grade, action: "種まき：まずFAQ＋ブログ記事から", priority: 2, diff: comp.diff };
+  }).sort((a, b) => a.priority - b.priority || (a.rank ?? 999) - (b.rank ?? 999));
+
+  const countA = graded.filter(g => g.grade === "A").length;
+  const countB = graded.filter(g => g.grade === "B").length;
+  const countC = graded.filter(g => g.grade === "C").length;
+
+  const gradeStyle: Record<Grade, { bg: string; border: string; badge: string; badgeText: string; icon: string; label: string }> = {
+    A: { bg: "bg-green-50", border: "border-green-200", badge: "bg-green-500", badgeText: "text-white", icon: "👑", label: "1〜3位（維持モード）" },
+    B: { bg: "bg-amber-50", border: "border-amber-200", badge: "bg-amber-500", badgeText: "text-white", icon: "🔥", label: "4〜10位（攻めモード）" },
+    C: { bg: "bg-gray-50", border: "border-gray-200", badge: "bg-gray-400", badgeText: "text-white", icon: "🌱", label: "圏外（種まきモード）" },
+  };
+
+  // B群の中から最優先3つを「次に攻めるキーワード」として提案
+  const nextTargets = graded.filter(g => g.grade === "B").slice(0, 3);
+
+  return (
+    <div className="space-y-6">
+      {/* サマリーカード */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+          <p className="text-3xl font-bold text-green-700">{countA}</p>
+          <p className="text-xs text-green-600 font-medium mt-1">👑 TOP3 維持</p>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+          <p className="text-3xl font-bold text-amber-700">{countB}</p>
+          <p className="text-xs text-amber-600 font-medium mt-1">🔥 攻めどき</p>
+        </div>
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
+          <p className="text-3xl font-bold text-gray-600">{countC}</p>
+          <p className="text-xs text-gray-500 font-medium mt-1">🌱 種まき</p>
+        </div>
+      </div>
+
+      {/* 次に攻めるべきキーワード */}
+      {nextTargets.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-xl p-5">
+          <h3 className="font-bold text-amber-800 text-lg mb-1">🎯 次に攻めるべきキーワード</h3>
+          <p className="text-xs text-amber-600 mb-4">4〜10位のキーワードは、あと少しでTOP3に入れます。集中的にコンテンツを投下しましょう。</p>
+          <div className="space-y-3">
+            {nextTargets.map((target, i) => (
+              <div key={target.keyword} className="bg-white rounded-lg p-4 border border-amber-200 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center text-sm font-bold">{i + 1}</span>
+                    <div>
+                      <p className="font-bold text-gray-800">{area} {target.keyword}</p>
+                      <p className="text-xs text-gray-500">現在 {target.rank}位{target.diff !== null && target.diff > 0 ? ` (前回より${target.diff}つ改善中)` : ""}</p>
+                    </div>
+                  </div>
+                  <span className="text-2xl font-bold text-amber-600">{target.rank}位</span>
+                </div>
+                <div className="mt-3 pt-3 border-t border-amber-100">
+                  <p className="text-xs font-medium text-amber-700 mb-2">やること：</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">GBP投稿 週1〜2回</span>
+                    <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full">ブログ記事作成</span>
+                    <span className="text-xs px-2 py-1 bg-teal-100 text-teal-700 rounded-full">FAQ作成</span>
+                    <span className="text-xs px-2 py-1 bg-pink-100 text-pink-700 rounded-full">note記事</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 全キーワードA/B/C分類一覧 */}
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="font-bold text-gray-800">全キーワード分類</h3>
+        </div>
+        <div className="divide-y divide-gray-50">
+          {(["B", "A", "C"] as Grade[]).map((grade) => {
+            const items = graded.filter(g => g.grade === grade);
+            if (items.length === 0) return null;
+            const style = gradeStyle[grade];
+            return (
+              <div key={grade}>
+                <div className={`px-5 py-3 ${style.bg} ${style.border} border-l-4`}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{style.icon}</span>
+                    <span className="font-bold text-sm text-gray-800">グループ{grade}: {style.label}</span>
+                    <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${style.badge} ${style.badgeText}`}>{items.length}件</span>
+                  </div>
+                </div>
+                {items.map((item) => (
+                  <div key={item.keyword} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50">
+                    <div className="flex items-center gap-3">
+                      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${style.badge} ${style.badgeText}`}>
+                        {item.rank ?? "-"}
+                      </span>
+                      <div>
+                        <span className="text-sm font-medium text-gray-800">{item.keyword}</span>
+                        {item.diff !== null && item.diff !== 0 && (
+                          <span className={`ml-2 text-xs ${item.diff > 0 ? "text-green-600" : "text-red-600"}`}>
+                            {item.diff > 0 ? `↑${item.diff}` : `↓${Math.abs(item.diff)}`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-xs text-gray-500">{item.action}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* アクションプラン */}
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="font-bold text-gray-800 mb-4">📋 アクションプラン</h3>
+        <div className="space-y-4">
+          <div className="flex gap-3">
+            <span className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center text-sm font-bold shrink-0">1</span>
+            <div>
+              <p className="font-bold text-sm text-gray-800">B群キーワードで一括コンテンツ生成</p>
+              <p className="text-xs text-gray-500 mt-0.5">「コンテンツ生成」タブでB群キーワードを選択 → FAQ＋ブログ＋GBP＋noteを一括生成</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <span className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center text-sm font-bold shrink-0">2</span>
+            <div>
+              <p className="font-bold text-sm text-gray-800">GBP投稿を継続（B群は週1〜2回）</p>
+              <p className="text-xs text-gray-500 mt-0.5">同じキーワードで角度を変えたGBP投稿を2〜3ヶ月続ける</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <span className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center text-sm font-bold shrink-0">3</span>
+            <div>
+              <p className="font-bold text-sm text-gray-800">2週間後に順位を再チェック</p>
+              <p className="text-xs text-gray-500 mt-0.5">B→Aに上がったキーワードは維持モードに移行、停滞しているものは追加施策</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <span className="w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center text-sm font-bold shrink-0">4</span>
+            <div>
+              <p className="font-bold text-sm text-gray-800">口コミに症状名を含めてもらう</p>
+              <p className="text-xs text-gray-500 mt-0.5">患者さんに「どんな症状で来院されましたか？」と聞く形で口コミを依頼</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
