@@ -43,6 +43,8 @@ export interface ClinicProfile {
   id: string;
   name: string;
   area: string;
+  nearestStation?: string;    // 最寄り駅（例: 渋谷駅 徒歩5分）
+  coverageAreas?: string[];   // 対応エリア（例: ["渋谷区", "目黒区", "港区"]）
   keywords: string[];
   description: string;
   category: string;           // 後方互換（表示用に結合した文字列）
@@ -67,6 +69,8 @@ export interface AppSettings {
 export interface BusinessProfile {
   name: string;
   area: string;
+  nearestStation?: string;
+  coverageAreas?: string[];
   keywords: string[];
   description: string;
   category: string;

@@ -254,7 +254,7 @@ export default function SettingsTab({
                             <span className="ml-2 text-green-600">WP連携済</span>
                           )}
                           {clinic.keywords.length > 0 && (
-                            <span className="ml-2">KW: {clinic.keywords.length}個</span>
+                            <span className="ml-2">症状KW: {clinic.keywords.length}個</span>
                           )}
                         </p>
                       </div>
@@ -309,6 +309,8 @@ export default function SettingsTab({
                   id: `clinic-${Date.now()}`,
                   name: data.name || "",
                   area: data.area || "",
+                  nearestStation: data.nearestStation,
+                  coverageAreas: data.coverageAreas,
                   keywords: data.keywords || [],
                   description: data.description || "",
                   category: data.category || "整体院",
@@ -398,6 +400,8 @@ function ClinicEditForm({
   const [description, setDescription] = useState(clinic?.description || "");
   const [ownerName, setOwnerName] = useState(clinic?.ownerName || "");
   const [specialty, setSpecialty] = useState(clinic?.specialty || "");
+  const [nearestStation, setNearestStation] = useState(clinic?.nearestStation || "");
+  const [coverageAreasText, setCoverageAreasText] = useState(clinic?.coverageAreas?.join(", ") || "");
   const [keywordsText, setKeywordsText] = useState(clinic?.keywords.join("\n") || "");
   const [strengths, setStrengths] = useState(clinic?.strengths || "");
   const [experience, setExperience] = useState(clinic?.experience || "");
@@ -486,7 +490,7 @@ function ClinicEditForm({
     const categories = selectedCategories.length > 0 ? selectedCategories : ["整体院"];
     const category = categories.join("・");
 
-    onSave({ name, area, category, categories, description, ownerName, specialty, keywords, urls, wordpress, noteProfile, strengths: strengths || undefined, experience: experience || undefined, reviews: reviews || undefined });
+    onSave({ name, area, nearestStation: nearestStation || undefined, coverageAreas: coverageAreasText ? coverageAreasText.split(",").map(a => a.trim()).filter(Boolean) : undefined, category, categories, description, ownerName, specialty, keywords, urls, wordpress, noteProfile, strengths: strengths || undefined, experience: experience || undefined, reviews: reviews || undefined });
   };
 
   const testWordPress = async () => {
@@ -589,6 +593,22 @@ function ClinicEditForm({
         </div>
       </div>
 
+      {/* 最寄り駅・対応エリア */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">最寄り駅</label>
+          <input type="text" value={nearestStation} onChange={(e) => setNearestStation(e.target.value)}
+            placeholder="例：渋谷駅 徒歩5分"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">対応エリア（カンマ区切り）</label>
+          <input type="text" value={coverageAreasText} onChange={(e) => setCoverageAreasText(e.target.value)}
+            placeholder="例：渋谷区, 目黒区, 港区"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+      </div>
+
       {/* 院長名・専門分野（横並び） */}
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -666,77 +686,85 @@ function ClinicEditForm({
         <p className="text-xs text-gray-400 mt-0.5">Googleマップの口コミから代表的なものを入力すると、記事の信頼性が向上します</p>
       </div>
 
-      {/* キーワード */}
+      {/* 症状キーワード */}
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">
-          MEOキーワード（1行1つ）
+          症状キーワード（1行1つ）
           <span className="text-gray-400 ml-1">
             {keywordsText.split("\n").filter((k) => k.trim()).length}個
           </span>
         </label>
         <p className="text-xs text-gray-500 mb-2">
-          Googleマップで順位を上げたい「エリア＋症状」のキーワードを入力してください。
+          症状キーワードのみ入力してください。地域名は上の「エリア」「対応エリア」設定から自動で組み合わせます。
         </p>
+        <div className="p-3 bg-green-50 border border-green-200 rounded-lg mb-3">
+          <p className="text-xs font-medium text-green-800 mb-1">キーワードの自動組み合わせ</p>
+          <p className="text-xs text-green-700">
+            地域設定「{area || '(未設定)'}」× 症状キーワード → 記事・FAQ・GBP投稿を自動生成
+          </p>
+          {coverageAreasText && (
+            <p className="text-xs text-green-600 mt-1">
+              対応エリア: {coverageAreasText} もコンテンツに含まれます
+            </p>
+          )}
+        </div>
         <textarea value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)} rows={6}
-          placeholder={"渋谷区 腰痛\n渋谷 肩こり\n渋谷区 整体\n恵比寿 骨盤矯正\n渋谷 頭痛\n渋谷区 猫背矯正"}
+          placeholder={"腰痛\n肩こり\n坐骨神経痛\n脊柱管狭窄症\n頭痛\n猫背矯正\n骨盤矯正"}
           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
         {/* キーワード候補 */}
-        {area && (
-          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-xs font-medium text-blue-800 mb-2">おすすめキーワード候補（タップでコピー or 追加）</p>
-            <div className="flex flex-wrap gap-1.5">
-              {(() => {
-                const areaName = area.replace(/[都道府県市区町村].*$/, '') || area;
-                const symptoms = ["整体", "腰痛", "坐骨神経痛", "脊柱管狭窄症", "神経痛", "しびれ", "自律神経", "頭痛"];
-                const candidates = symptoms.map(s => `${areaName} ${s}`);
-                return candidates.map((kw) => {
-                  const isAdded = keywordsText.split("\n").some(k => k.trim() === kw);
-                  return (
-                    <div key={kw} className="flex items-center gap-0.5">
+        <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-xs font-medium text-blue-800 mb-2">おすすめキーワード候補（タップでコピー or 追加）</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(() => {
+              const symptoms = ["整体", "腰痛", "肩こり", "坐骨神経痛", "脊柱管狭窄症", "神経痛", "しびれ", "自律神経失調症", "頭痛", "猫背矯正", "骨盤矯正", "ぎっくり腰", "ストレートネック", "四十肩", "五十肩"];
+              const candidates = symptoms;
+              return candidates.map((kw) => {
+                const isAdded = keywordsText.split("\n").some(k => k.trim() === kw);
+                return (
+                  <div key={kw} className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(kw);
+                        setCopiedKw(kw);
+                        setTimeout(() => setCopiedKw(null), 1500);
+                      }}
+                      className={`px-2 py-1 rounded text-xs transition-all ${
+                        copiedKw === kw
+                          ? "bg-green-500 text-white"
+                          : "bg-white text-gray-700 border border-gray-200 hover:border-blue-300"
+                      }`}
+                    >
+                      {copiedKw === kw ? "コピー済" : kw}
+                    </button>
+                    {!isAdded && (
                       <button
                         type="button"
                         onClick={() => {
-                          navigator.clipboard.writeText(kw);
-                          setCopiedKw(kw);
-                          setTimeout(() => setCopiedKw(null), 1500);
+                          setKeywordsText(prev => prev.trim() ? prev.trim() + "\n" + kw : kw);
                         }}
-                        className={`px-2 py-1 rounded text-xs transition-all ${
-                          copiedKw === kw
-                            ? "bg-green-500 text-white"
-                            : "bg-white text-gray-700 border border-gray-200 hover:border-blue-300"
-                        }`}
+                        className="px-1.5 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                        title="キーワード欄に追加"
                       >
-                        {copiedKw === kw ? "コピー済" : kw}
+                        +
                       </button>
-                      {!isAdded && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setKeywordsText(prev => prev.trim() ? prev.trim() + "\n" + kw : kw);
-                          }}
-                          className="px-1.5 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
-                          title="キーワード欄に追加"
-                        >
-                          +
-                        </button>
-                      )}
-                      {isAdded && (
-                        <span className="text-xs text-green-600 px-1">✓</span>
-                      )}
-                    </div>
-                  );
-                });
-              })()}
-            </div>
+                    )}
+                    {isAdded && (
+                      <span className="text-xs text-green-600 px-1">✓</span>
+                    )}
+                  </div>
+                );
+              });
+            })()}
           </div>
-        )}
+        </div>
         <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <p className="text-xs font-medium text-amber-800 mb-1">キーワードの入れ方のコツ</p>
           <ul className="text-xs text-amber-700 space-y-0.5 list-disc list-inside">
-            <li>「エリア名＋症状」の組み合わせが基本（例：渋谷 腰痛）</li>
-            <li>エリアは区名・駅名・地域名など複数パターンで入れると効果的</li>
-            <li>症状だけ（腰痛）やエリアだけ（渋谷 整体）もOK</li>
-            <li>MEOチェッカーで実際に順位を確認しながら調整しましょう</li>
+            <li>症状名のみを入力（地域名は不要）</li>
+            <li>記事生成時に地域名が自動で組み合わされます</li>
+            <li>具体的な症状名ほど専門性の高い記事が生成されます</li>
+            <li>「腰痛」より「坐骨神経痛」のように具体的な方が効果的</li>
           </ul>
         </div>
       </div>

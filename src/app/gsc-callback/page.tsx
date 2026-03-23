@@ -27,7 +27,7 @@ function CallbackContent() {
 
     // Send the code back to the opener window
     if (window.opener) {
-      window.opener.postMessage({ type: "GSC_AUTH_CODE", code }, window.location.origin);
+      window.opener.postMessage({ type: "gsc_auth_code", code }, window.location.origin);
       setStatus("success");
       setMessage("認証が完了しました。このウィンドウは自動的に閉じます。");
       setTimeout(() => window.close(), 2000);

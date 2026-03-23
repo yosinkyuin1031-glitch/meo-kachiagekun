@@ -181,6 +181,8 @@ export async function getBusinessProfile(): Promise<BusinessProfile> {
   return {
     name: clinic.name,
     area: clinic.area,
+    nearestStation: clinic.nearestStation,
+    coverageAreas: clinic.coverageAreas,
     keywords: clinic.keywords,
     description: clinic.description,
     category: clinic.category,
