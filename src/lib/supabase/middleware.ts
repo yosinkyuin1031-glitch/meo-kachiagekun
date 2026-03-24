@@ -32,7 +32,7 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 認証不要パス
-  const publicPaths = ["/login", "/signup", "/gsc-callback"];
+  const publicPaths = ["/login", "/signup", "/gsc-callback", "/guide"];
   const isPublicPath =
     publicPaths.some((p) => pathname.startsWith(p)) ||
     pathname.startsWith("/api/");
