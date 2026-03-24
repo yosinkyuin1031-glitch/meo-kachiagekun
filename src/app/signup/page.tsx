@@ -9,7 +9,6 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
   const supabase = createClient();
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -27,31 +26,21 @@ export default function SignupPage() {
 
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        data: { email_confirmed: true },
-      },
-    });
-
-    if (error) {
-      if (error.message.includes("already registered")) {
-        setError("このメールアドレスは既に登録されています");
-      } else {
-        setError(error.message);
-      }
-      setLoading(false);
-      return;
-    }
-
-    // サインアップ後に初期設定レコードを作成
-    if (data.user) {
-      await fetch("/api/init-user", {
+    try {
+      // サーバー側でアカウント作成（メール確認を自動スキップ）
+      const res = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: data.user.id }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        setError(result.error || "登録に失敗しました");
+        setLoading(false);
+        return;
+      }
 
       // そのままログインしてリダイレクト
       const { error: loginError } = await supabase.auth.signInWithPassword({
@@ -63,32 +52,14 @@ export default function SignupPage() {
         window.location.href = "/";
         return;
       }
+
+      setError("アカウントは作成されましたが、自動ログインに失敗しました。ログインページからログインしてください。");
+      setLoading(false);
+    } catch {
+      setError("通信エラーが発生しました。もう一度お試しください。");
+      setLoading(false);
     }
-
-    setSuccess(true);
-    setLoading(false);
   };
-
-  if (success) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white flex items-center justify-center px-4">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">登録完了</h2>
-          <p className="text-sm text-gray-600 mb-6">
-            確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。
-          </p>
-          <a href="/login" className="text-blue-600 font-medium hover:underline text-sm">
-            ログインページへ
-          </a>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white flex items-center justify-center px-4">
