@@ -153,7 +153,7 @@ const slides: Slide[] = [
         <div className="bg-white/10 rounded-xl p-4">
           <p className="text-xs text-white/60 mb-2">まず下のボタンを押してください：</p>
           <a
-            href="https://app-three-pi-32.vercel.app/signup"
+            href="https://meo-kachiagekun.vercel.app/signup"
             target="_blank"
             rel="noopener noreferrer"
             className="block bg-white rounded-lg p-3 text-center text-violet-700 font-bold text-sm hover:bg-white/90 transition"
@@ -456,7 +456,7 @@ const slides: Slide[] = [
             ログアウトしている場合は：
           </p>
           <a
-            href="https://app-three-pi-32.vercel.app/login"
+            href="https://meo-kachiagekun.vercel.app/login"
             target="_blank"
             rel="noopener noreferrer"
             className="block bg-white rounded-lg p-2.5 text-center text-emerald-700 font-bold text-sm mt-2 hover:bg-white/90 transition"
@@ -813,7 +813,7 @@ const slides: Slide[] = [
         </div>
 
         <a
-          href="https://app-three-pi-32.vercel.app"
+          href="https://meo-kachiagekun.vercel.app"
           target="_blank"
           rel="noopener noreferrer"
           className="block bg-white rounded-xl p-3 text-center text-orange-600 font-bold text-sm hover:bg-white/90 transition shadow-lg"
