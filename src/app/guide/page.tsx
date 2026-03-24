@@ -28,26 +28,36 @@ const slides: Slide[] = [
   },
   {
     title: '全体の流れ',
-    subtitle: 'たった2ステップです',
+    subtitle: '3ステップで完了です',
     bg: 'from-gray-800 to-gray-900',
     content: (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="bg-white/10 rounded-2xl p-5 border border-white/20">
           <div className="flex items-center gap-4">
             <span className="text-3xl font-bold text-orange-400">1</span>
+            <div>
+              <p className="font-bold text-white">アカウントを作成する</p>
+              <p className="text-sm text-white/60">メールアドレスとパスワードだけ</p>
+            </div>
+          </div>
+        </div>
+        <div className="text-center text-xl text-white/30">↓</div>
+        <div className="bg-white/10 rounded-2xl p-5 border border-white/20">
+          <div className="flex items-center gap-4">
+            <span className="text-3xl font-bold text-orange-400">2</span>
             <div>
               <p className="font-bold text-white">APIキーを取得する</p>
               <p className="text-sm text-white/60">AIを動かすための鍵を手に入れる</p>
             </div>
           </div>
         </div>
-        <div className="text-center text-2xl text-white/30">↓</div>
+        <div className="text-center text-xl text-white/30">↓</div>
         <div className="bg-white/10 rounded-2xl p-5 border border-white/20">
           <div className="flex items-center gap-4">
-            <span className="text-3xl font-bold text-orange-400">2</span>
+            <span className="text-3xl font-bold text-orange-400">3</span>
             <div>
-              <p className="font-bold text-white">アプリにログインして設定</p>
-              <p className="text-sm text-white/60">院の情報を入力すれば完了</p>
+              <p className="font-bold text-white">院の情報を入力する</p>
+              <p className="text-sm text-white/60">設定画面で入力すれば完了</p>
             </div>
           </div>
         </div>
@@ -56,6 +66,47 @@ const slides: Slide[] = [
   },
   {
     title: 'STEP 1',
+    subtitle: 'アカウントを作成する',
+    bg: 'from-violet-600 to-violet-800',
+    content: (
+      <div className="space-y-4">
+        <div className="bg-white/10 rounded-xl p-5">
+          <p className="text-sm text-white/80 mb-3">下記のURLにアクセスしてください：</p>
+          <a
+            href="https://app-three-pi-32.vercel.app/signup"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block bg-white/20 rounded-lg p-3 text-center text-white font-bold hover:bg-white/30 transition"
+          >
+            アカウント作成ページを開く
+          </a>
+        </div>
+        <div className="flex items-start gap-3 bg-white/10 rounded-xl p-4">
+          <span className="text-xl mt-0.5">1️⃣</span>
+          <p className="text-sm text-white/90">
+            <strong>メールアドレス</strong>を入力<br/>
+            <span className="text-white/60">普段お使いのアドレスでOKです</span>
+          </p>
+        </div>
+        <div className="flex items-start gap-3 bg-white/10 rounded-xl p-4">
+          <span className="text-xl mt-0.5">2️⃣</span>
+          <p className="text-sm text-white/90">
+            <strong>パスワード</strong>を決めて入力<br/>
+            <span className="text-white/60">6文字以上。確認用にもう一度入力</span>
+          </p>
+        </div>
+        <div className="flex items-start gap-3 bg-white/10 rounded-xl p-4">
+          <span className="text-xl mt-0.5">3️⃣</span>
+          <p className="text-sm text-white/90">
+            「<strong>アカウントを作成</strong>」ボタンを押す<br/>
+            <span className="text-white/60">自動でログインされます</span>
+          </p>
+        </div>
+      </div>
+    ),
+  },
+  {
+    title: 'STEP 2',
     subtitle: 'APIキーを取得する',
     bg: 'from-blue-600 to-blue-800',
     content: (
@@ -78,7 +129,7 @@ const slides: Slide[] = [
     ),
   },
   {
-    title: 'STEP 1-1',
+    title: 'STEP 2-1',
     subtitle: 'Anthropicにアクセス',
     bg: 'from-blue-600 to-blue-800',
     content: (
@@ -106,7 +157,7 @@ const slides: Slide[] = [
     ),
   },
   {
-    title: 'STEP 1-2',
+    title: 'STEP 2-2',
     subtitle: 'クレジットを購入',
     bg: 'from-blue-600 to-blue-800',
     content: (
@@ -131,7 +182,7 @@ const slides: Slide[] = [
     ),
   },
   {
-    title: 'STEP 1-3',
+    title: 'STEP 2-3',
     subtitle: 'APIキーを作成',
     bg: 'from-blue-600 to-blue-800',
     content: (
@@ -163,45 +214,43 @@ const slides: Slide[] = [
     ),
   },
   {
-    title: 'STEP 2',
-    subtitle: 'アプリにログイン',
+    title: 'STEP 3',
+    subtitle: '院の情報を入力する',
     bg: 'from-emerald-600 to-emerald-800',
     content: (
       <div className="space-y-4">
         <div className="bg-white/10 rounded-xl p-5">
-          <p className="text-sm text-white/80 mb-3">アプリにアクセス：</p>
+          <p className="text-sm text-white/80 mb-3">
+            STEP 1でアカウント作成後、自動でログインされています。<br/>
+            もしログアウトしている場合は下記からログインしてください：
+          </p>
           <a
-            href="https://meo-kachiagekun.vercel.app"
+            href="https://app-three-pi-32.vercel.app/login"
             target="_blank"
             rel="noopener noreferrer"
             className="block bg-white/20 rounded-lg p-3 text-center text-white font-bold hover:bg-white/30 transition"
           >
-            meo-kachiagekun.vercel.app
+            ログインページを開く
           </a>
         </div>
         <div className="flex items-start gap-3 bg-white/10 rounded-xl p-4">
           <span className="text-xl mt-0.5">1️⃣</span>
           <p className="text-sm text-white/90">
-            メールアドレスとパスワードでログイン<br/>
-            <span className="text-white/60">個別にお送りしたものを使ってください</span>
+            画面上部の「<strong>設定</strong>」タブを押す
           </p>
-        </div>
-        <div className="flex items-start gap-3 bg-white/10 rounded-xl p-4">
-          <span className="text-xl mt-0.5">2️⃣</span>
-          <p className="text-sm text-white/90">画面上部の「<strong>設定</strong>」タブを押す</p>
         </div>
       </div>
     ),
   },
   {
-    title: 'STEP 2-2',
+    title: 'STEP 3-2',
     subtitle: '設定画面で入力する項目',
     bg: 'from-emerald-600 to-emerald-800',
     content: (
       <div className="space-y-3">
         <div className="bg-white/10 rounded-xl p-3">
           <p className="text-xs text-emerald-300 font-bold">APIキー（必須）</p>
-          <p className="text-xs text-white/70">STEP 1で取得した「sk-ant-」で始まる文字列</p>
+          <p className="text-xs text-white/70">STEP 2で取得した「sk-ant-」で始まる文字列</p>
         </div>
         <div className="bg-white/10 rounded-xl p-3">
           <p className="text-xs text-emerald-300 font-bold">院名</p>
@@ -223,7 +272,7 @@ const slides: Slide[] = [
     ),
   },
   {
-    title: 'STEP 2-3',
+    title: 'STEP 3-3',
     subtitle: '接続テスト',
     bg: 'from-emerald-600 to-emerald-800',
     content: (

@@ -27,9 +27,12 @@ export default function SignupPage() {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
+      options: {
+        data: { email_confirmed: true },
+      },
     });
 
     if (error) {
@@ -40,6 +43,26 @@ export default function SignupPage() {
       }
       setLoading(false);
       return;
+    }
+
+    // サインアップ後に初期設定レコードを作成
+    if (data.user) {
+      await fetch("/api/init-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: data.user.id }),
+      });
+
+      // そのままログインしてリダイレクト
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (!loginError) {
+        window.location.href = "/";
+        return;
+      }
     }
 
     setSuccess(true);
