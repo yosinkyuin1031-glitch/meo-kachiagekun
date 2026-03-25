@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { ClinicProfile, WordPressSettings, NoteProfile } from "@/lib/types";
-import { getSerpApiKey, saveSerpApiKey } from "@/lib/supabase-storage";
+import { getSerpApiKey, saveSerpApiKey, getClinics, getContents, getRankingHistory, getChecklist } from "@/lib/supabase-storage";
 import { ConfirmDialog, useConfirmDialog } from "./ConfirmDialog";
 
 interface Props {
@@ -39,9 +39,61 @@ export default function SettingsTab({
   const [showSerpKey, setShowSerpKey] = useState(false);
   const [serpSaved, setSerpSaved] = useState(false);
 
+  // データエクスポート
+  const [exporting, setExporting] = useState(false);
+  const [exportDone, setExportDone] = useState(false);
+
   useEffect(() => {
     getSerpApiKey().then(setSerpApiKey);
   }, []);
+
+  const handleExportData = async () => {
+    setExporting(true);
+    setExportDone(false);
+    try {
+      const [clinicData, contentData, rankingData] = await Promise.all([
+        getClinics(),
+        getContents(),
+        getRankingHistory(),
+      ]);
+
+      // チェックリストは院ごとに取得
+      const checklistData: Record<string, unknown[]> = {};
+      for (const clinic of clinicData) {
+        const items = await getChecklist(clinic.id);
+        checklistData[clinic.id] = items;
+      }
+
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        service: "MEO勝ち上げくん",
+        clinics: clinicData,
+        contents: contentData,
+        rankingHistory: rankingData,
+        checklists: checklistData,
+      };
+
+      const jsonStr = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const today = new Date().toISOString().split("T")[0];
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `MEO勝ち上げくん_データ_${today}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setExportDone(true);
+      setTimeout(() => setExportDone(false), 3000);
+    } catch (err) {
+      console.error("エクスポートエラー:", err);
+      alert("データのエクスポートに失敗しました。もう一度お試しください。");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleSaveApiKey = async () => {
     if (!apiKey.trim()) {
@@ -380,6 +432,34 @@ export default function SettingsTab({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* データエクスポート */}
+      <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <h3 className="font-bold text-gray-800 text-lg mb-2">データエクスポート</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          登録している院情報、生成コンテンツ、順位履歴、チェックリストをJSON形式でダウンロードできます。
+          解約前のバックアップや、データの確認にご利用ください。
+        </p>
+        <button
+          onClick={handleExportData}
+          disabled={exporting}
+          className={`w-full py-3 rounded-lg text-sm font-medium transition-all ${
+            exportDone
+              ? "bg-green-500 text-white"
+              : exporting
+              ? "bg-gray-400 text-white cursor-not-allowed"
+              : "bg-gray-800 text-white hover:bg-gray-900"
+          }`}
+        >
+          {exporting ? "データを準備中..." : exportDone ? "ダウンロード完了" : "全データをダウンロード（JSON）"}
+        </button>
+      </div>
+
+      {/* リンク */}
+      <div className="text-center space-x-4 pb-4">
+        <a href="/terms" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">利用規約</a>
+        <a href="/privacy" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">プライバシーポリシー</a>
       </div>
     </div>
   );

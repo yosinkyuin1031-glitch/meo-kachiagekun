@@ -9,6 +9,7 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const supabase = createClient();
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -109,6 +110,22 @@ export default function SignupPage() {
             />
           </div>
 
+          <div className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              id="agree-terms"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              className="mt-1 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="agree-terms" className="text-xs text-gray-600 leading-relaxed">
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">利用規約</a>
+              と
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">プライバシーポリシー</a>
+              に同意する
+            </label>
+          </div>
+
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
               {error}
@@ -117,7 +134,7 @@ export default function SignupPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !agreed}
             className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold rounded-xl hover:from-blue-700 hover:to-blue-600 disabled:opacity-50 transition-all shadow-lg text-sm"
           >
             {loading ? "登録中..." : "アカウントを作成"}
@@ -130,6 +147,11 @@ export default function SignupPage() {
             </a>
           </p>
         </form>
+
+        <div className="text-center mt-4 space-x-4">
+          <a href="/terms" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">利用規約</a>
+          <a href="/privacy" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">プライバシーポリシー</a>
+        </div>
       </div>
     </div>
   );

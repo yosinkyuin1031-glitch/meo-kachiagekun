@@ -25,8 +25,9 @@ import ChecklistTab from "@/components/ChecklistTab";
 import ReviewReplyGenerator from "@/components/ReviewReplyGenerator";
 import LocalDataMigration, { hasLocalData } from "@/components/LocalDataMigration";
 import WeeklyReminder from "@/components/WeeklyReminder";
+import PlanTab from "@/components/PlanTab";
 
-type Tab = "dashboard" | "bulk" | "checklist" | "ranking" | "history" | "settings";
+type Tab = "dashboard" | "bulk" | "checklist" | "ranking" | "history" | "plan" | "settings";
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: "dashboard", label: "ダッシュボード", icon: "📊" },
@@ -34,6 +35,7 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: "checklist", label: "施策チェック", icon: "✅" },
   { key: "ranking", label: "順位チェック", icon: "🔍" },
   { key: "history", label: "履歴", icon: "📜" },
+  { key: "plan", label: "プラン", icon: "💎" },
   { key: "settings", label: "設定", icon: "⚙️" },
 ];
 
@@ -353,6 +355,8 @@ export default function Home() {
 
         {tab === "history" && <HistoryTab />}
 
+        {tab === "plan" && <PlanTab />}
+
         {tab === "settings" && (
           <SettingsTab
             clinics={clinics}
@@ -369,7 +373,7 @@ export default function Home() {
 
       {/* モバイル用ボトムナビゲーション（md未満で表示） */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] md:hidden">
-        <div className="grid grid-cols-6 h-[68px]">
+        <div className="grid grid-cols-7 h-[68px]">
           {TABS.map((t) => (
             <button
               key={t.key}
