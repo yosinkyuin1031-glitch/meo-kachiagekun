@@ -1,11 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-// Service Role クライアント（Admin API用 — レート制限なし）
-const adminSupabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function getAdminSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 export async function POST(request: Request) {
   try {
@@ -16,6 +17,8 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    const adminSupabase = getAdminSupabase();
 
     // 1. Admin APIでユーザー作成（メール確認済み・レート制限なし）
     const { data, error } = await adminSupabase.auth.admin.createUser({
