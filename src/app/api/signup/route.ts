@@ -1,12 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import pg from "pg";
 
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
+// Service Role クライアント（メール確認スキップ + 初期レコード作成用）
+const adminSupabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
+// Anon クライアント（サインアップ用）
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -45,18 +46,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. DBで直接メール確認済みにする（email_confirmed_at を設定）
-    await pool.query(
-      `UPDATE auth.users SET email_confirmed_at = NOW() WHERE id = $1`,
-      [data.user.id]
-    );
+    // 2. Admin APIでメール確認済みにする（pg直接接続不要）
+    await adminSupabase.auth.admin.updateUserById(data.user.id, {
+      email_confirm: true,
+    });
 
-    // 3. meo_user_settings に初期レコードを作成（service_role不要、anon keyで十分）
-    const serviceSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-    await serviceSupabase.from("meo_user_settings").upsert(
+    // 3. meo_user_settings に初期レコードを作成
+    await adminSupabase.from("meo_user_settings").upsert(
       {
         user_id: data.user.id,
         anthropic_key: "",
