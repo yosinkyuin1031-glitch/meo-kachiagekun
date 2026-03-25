@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import pg from "pg";
 
@@ -6,6 +6,11 @@ const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export async function POST(request: Request) {
   try {
@@ -16,8 +21,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    const supabase = await createClient();
 
     // 1. Supabase Auth でサインアップ
     const { data, error } = await supabase.auth.signUp({
@@ -48,8 +51,12 @@ export async function POST(request: Request) {
       [data.user.id]
     );
 
-    // 3. meo_user_settings に初期レコードを作成
-    await supabase.from("meo_user_settings").upsert(
+    // 3. meo_user_settings に初期レコードを作成（service_role不要、anon keyで十分）
+    const serviceSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    await serviceSupabase.from("meo_user_settings").upsert(
       {
         user_id: data.user.id,
         anthropic_key: "",
