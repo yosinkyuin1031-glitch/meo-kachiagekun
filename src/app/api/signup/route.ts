@@ -1,10 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-function getAdminSupabase() {
+function getSupabase() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 }
 
@@ -18,17 +18,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const adminSupabase = getAdminSupabase();
+    const supabase = getSupabase();
 
-    // 1. Admin APIでユーザー作成（メール確認済み・レート制限なし）
-    const { data, error } = await adminSupabase.auth.admin.createUser({
+    // 1. サインアップ（メール確認はSupabase側で無効化済み）
+    const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      email_confirm: true,
     });
 
     if (error) {
-      if (error.message.includes("already been registered")) {
+      if (error.message.includes("already registered")) {
         return NextResponse.json(
           { error: "このメールアドレスは既に登録されています" },
           { status: 400 }
@@ -45,7 +44,7 @@ export async function POST(request: Request) {
     }
 
     // 2. meo_user_settings に初期レコードを作成
-    await adminSupabase.from("meo_user_settings").upsert(
+    await supabase.from("meo_user_settings").upsert(
       {
         user_id: data.user.id,
         anthropic_key: "",
@@ -59,7 +58,7 @@ export async function POST(request: Request) {
   } catch (e) {
     console.error("signup error:", e);
     return NextResponse.json(
-      { error: "サーバーエラーが発生しました", detail: e instanceof Error ? e.message : String(e) },
+      { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );
   }
