@@ -1,1 +1,81 @@
 @import "tailwindcss";
+
+/* 印刷用スタイル（レポート出力） */
+@media print {
+  body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-report {
+    display: block !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-report h1 {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 4px;
+  }
+  .print-report .report-date {
+    font-size: 14px;
+    color: #64748b;
+    margin-bottom: 24px;
+  }
+  .print-report table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 24px;
+  }
+  .print-report th,
+  .print-report td {
+    border: 1px solid #e2e8f0;
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 13px;
+  }
+  .print-report th {
+    background-color: #f1f5f9;
+    font-weight: 600;
+    color: #334155;
+  }
+  .print-report .summary-box {
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 24px;
+    page-break-inside: avoid;
+  }
+  .print-report .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .print-report .summary-item {
+    text-align: center;
+    padding: 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+  }
+  .print-report .chart-container {
+    page-break-inside: avoid;
+    margin: 24px 0;
+  }
+  .rank-up { color: #16a34a; }
+  .rank-down { color: #dc2626; }
+  .rank-same { color: #6b7280; }
+}
+
+/* モバイルボトムナビゲーション用 */
+.bottom-nav-spacer {
+  height: 72px;
+}
+
+@media (min-width: 768px) {
+  .bottom-nav-spacer {
+    height: 0;
+  }
+}

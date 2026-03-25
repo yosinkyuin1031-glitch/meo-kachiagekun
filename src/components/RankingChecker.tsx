@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { BusinessProfile } from "@/lib/types";
-import { RankingResult, RankingHistory } from "@/lib/ranking-types";
+import { RankingResult, RankingHistory, TopPlace } from "@/lib/ranking-types";
 import { getRankingHistory, addRankingHistory, getSerpApiKey, saveSerpApiKey } from "@/lib/supabase-storage";
 import RankingTable from "./RankingTable";
 import HistoryChart from "./HistoryChart";
@@ -140,6 +140,473 @@ function ComparisonBadge({ comp }: { comp: KeywordComparison }) {
   );
 }
 
+/** 順位変動アラート */
+interface RankAlert {
+  keyword: string;
+  type: "up" | "down" | "entered" | "dropped";
+  currentRank: number | null;
+  previousRank: number | null;
+  diff: number;
+}
+
+function buildAlerts(comparisons: KeywordComparison[]): RankAlert[] {
+  const alerts: RankAlert[] = [];
+  for (const comp of comparisons) {
+    if (comp.previousRank === null && comp.latestRank !== null && comp.previousDate !== null) {
+      alerts.push({ keyword: comp.keyword, type: "entered", currentRank: comp.latestRank, previousRank: null, diff: 0 });
+      continue;
+    }
+    if (comp.previousRank !== null && comp.latestRank === null && comp.previousDate !== null) {
+      alerts.push({ keyword: comp.keyword, type: "dropped", currentRank: null, previousRank: comp.previousRank, diff: 0 });
+      continue;
+    }
+    if (comp.diff !== null && Math.abs(comp.diff) >= 3) {
+      alerts.push({ keyword: comp.keyword, type: comp.diff > 0 ? "up" : "down", currentRank: comp.latestRank, previousRank: comp.previousRank, diff: Math.abs(comp.diff) });
+    }
+  }
+  return alerts;
+}
+
+interface CompetitorFrequency {
+  name: string;
+  count: number;
+  keywords: string[];
+  bestRank: number;
+  avgRating: number | null;
+}
+
+function buildCompetitorFrequency(results: RankingResult[], businessName: string): CompetitorFrequency[] {
+  const map = new Map<string, { count: number; keywords: string[]; bestRank: number; ratings: number[] }>();
+  for (const r of results) {
+    for (const place of r.topThree) {
+      if (place.name.includes(businessName)) continue;
+      const existing = map.get(place.name);
+      if (existing) {
+        existing.count++;
+        existing.keywords.push(r.keyword);
+        if (place.rank < existing.bestRank) existing.bestRank = place.rank;
+        if (place.rating) existing.ratings.push(place.rating);
+      } else {
+        map.set(place.name, { count: 1, keywords: [r.keyword], bestRank: place.rank, ratings: place.rating ? [place.rating] : [] });
+      }
+    }
+  }
+  return Array.from(map.entries())
+    .map(([name, data]) => ({
+      name,
+      count: data.count,
+      keywords: data.keywords,
+      bestRank: data.bestRank,
+      avgRating: data.ratings.length > 0 ? data.ratings.reduce((a, b) => a + b, 0) / data.ratings.length : null,
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function AlertBanners({ alerts }: { alerts: RankAlert[] }) {
+  if (alerts.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      {alerts.map((alert) => {
+        if (alert.type === "entered") {
+          return (
+            <div key={`alert-${alert.keyword}`} className="bg-emerald-50 border border-emerald-300 rounded-lg px-4 py-3 flex items-center gap-3">
+              <span className="text-xl shrink-0">🎉</span>
+              <p className="text-sm font-medium text-emerald-800">
+                「{alert.keyword}」が圏外から <span className="font-bold">{alert.currentRank}位</span> にランクインしました
+              </p>
+            </div>
+          );
+        }
+        if (alert.type === "dropped") {
+          return (
+            <div key={`alert-${alert.keyword}`} className="bg-red-50 border border-red-300 rounded-lg px-4 py-3 flex items-center gap-3">
+              <span className="text-xl shrink-0">⚠️</span>
+              <p className="text-sm font-medium text-red-800">
+                「{alert.keyword}」が {alert.previousRank}位 から <span className="font-bold">圏外</span> に落ちました
+              </p>
+            </div>
+          );
+        }
+        if (alert.type === "down") {
+          return (
+            <div key={`alert-${alert.keyword}`} className="bg-red-50 border border-red-300 rounded-lg px-4 py-3 flex items-center gap-3">
+              <span className="text-xl shrink-0">⚠️</span>
+              <p className="text-sm font-medium text-red-800">
+                「{alert.keyword}」の順位が <span className="font-bold">{alert.diff}位下がりました</span>（{alert.previousRank}位 → {alert.currentRank}位）
+              </p>
+            </div>
+          );
+        }
+        return (
+          <div key={`alert-${alert.keyword}`} className="bg-green-50 border border-green-300 rounded-lg px-4 py-3 flex items-center gap-3">
+            <span className="text-xl shrink-0">🚀</span>
+            <p className="text-sm font-medium text-green-800">
+              「{alert.keyword}」の順位が <span className="font-bold">{alert.diff}位上がりました</span>（{alert.previousRank}位 → {alert.currentRank}位）
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CompetitorAnalysisPanel({ results, businessName }: { results: RankingResult[]; businessName: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const competitors = useMemo(() => buildCompetitorFrequency(results, businessName), [results, businessName]);
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-6 py-4 border-b border-gray-100 flex items-center justify-between hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🏢</span>
+          <h3 className="font-bold text-gray-800">競合分析</h3>
+          <span className="text-xs text-gray-400 ml-1">（{competitors.length}院検出）</span>
+        </div>
+        <span className="text-gray-400 text-sm">{isOpen ? "▲ 閉じる" : "▼ 開く"}</span>
+      </button>
+
+      {isOpen && (
+        <div className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-left">
+                  <th className="px-4 py-3 font-medium text-gray-600">キーワード</th>
+                  <th className="px-4 py-3 font-medium text-gray-600 text-center">自院順位</th>
+                  <th className="px-4 py-3 font-medium text-gray-600 text-center">1位</th>
+                  <th className="px-4 py-3 font-medium text-gray-600 text-center">2位</th>
+                  <th className="px-4 py-3 font-medium text-gray-600 text-center">3位</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {results.map((result) => {
+                  const isWinning = result.rank !== null && result.rank <= 3;
+                  const top1 = result.topThree.find((p) => p.rank === 1);
+                  const top2 = result.topThree.find((p) => p.rank === 2);
+                  const top3 = result.topThree.find((p) => p.rank === 3);
+                  return (
+                    <tr key={`comp-${result.keyword}`} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <span className="font-medium text-gray-800">{result.keyword}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-bold ${
+                          result.rank === null ? "bg-gray-100 text-gray-400" : isWinning ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                        }`}>
+                          {result.rank !== null ? `${result.rank}位` : "圏外"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <CompetitorCell place={top1} businessName={result.businessName} />
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <CompetitorCell place={top2} businessName={result.businessName} />
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <CompetitorCell place={top3} businessName={result.businessName} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {competitors.length > 0 && (
+            <div className="border-t border-gray-100 px-6 py-4">
+              <h4 className="font-bold text-gray-700 text-sm mb-3">競合出現頻度ランキング</h4>
+              <div className="space-y-2">
+                {competitors.slice(0, 10).map((comp, i) => (
+                  <div key={comp.name} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50">
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                      i === 0 ? "bg-red-500 text-white" : i === 1 ? "bg-orange-400 text-white" : i === 2 ? "bg-amber-400 text-white" : "bg-gray-300 text-gray-700"
+                    }`}>
+                      {i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{comp.name}</p>
+                      <p className="text-xs text-gray-400">
+                        上位出現: {comp.count}回 / 最高{comp.bestRank}位
+                        {comp.avgRating !== null && ` / 評価 ${comp.avgRating.toFixed(1)}`}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1 max-w-[180px]">
+                      {comp.keywords.slice(0, 3).map((kw) => (
+                        <span key={kw} className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-200 rounded text-gray-500">{kw}</span>
+                      ))}
+                      {comp.keywords.length > 3 && (
+                        <span className="text-[10px] px-1.5 py-0.5 text-gray-400">+{comp.keywords.length - 3}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompetitorCell({ place, businessName }: { place?: TopPlace; businessName: string }) {
+  if (!place) return <span className="text-xs text-gray-300">-</span>;
+  const isSelf = place.name.includes(businessName);
+  return (
+    <div className={`text-xs px-1 ${isSelf ? "text-blue-700 font-bold" : "text-gray-600"}`}>
+      <p className="truncate max-w-[120px] mx-auto" title={place.name}>
+        {isSelf ? "★ 自院" : place.name}
+      </p>
+      {place.rating && (
+        <p className="text-yellow-500 text-[10px]">{"★".repeat(Math.round(place.rating))} {place.rating.toFixed(1)}</p>
+      )}
+    </div>
+  );
+}
+
+/** レポートをwindow.print()で出力する */
+function openReportWindow(
+  profile: BusinessProfile,
+  comparisons: KeywordComparison[],
+  history: RankingHistory[],
+  keywords: string[]
+) {
+  const reportDate = new Date().toLocaleDateString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  // 統計計算
+  const ranked = comparisons.filter((c) => c.latestRank !== null);
+  const improved = comparisons.filter((c) => c.diff !== null && c.diff > 0);
+  const declined = comparisons.filter((c) => c.diff !== null && c.diff < 0);
+  const avgRank =
+    ranked.length > 0
+      ? (ranked.reduce((sum, c) => sum + (c.latestRank ?? 0), 0) / ranked.length).toFixed(1)
+      : "-";
+
+  // グラフ用SVGデータ生成（シンプルな折れ線グラフ）
+  const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#06B6D4", "#F97316"];
+
+  // 日付ごとのデータ整理
+  const dateMap = new Map<string, Record<string, number | null>>();
+  history.forEach((entry) => {
+    const d = new Date(entry.checkedAt);
+    const dateKey = `${(d.getMonth() + 1).toString().padStart(2, "0")}/${d.getDate().toString().padStart(2, "0")}`;
+    if (!dateMap.has(dateKey)) dateMap.set(dateKey, {});
+    dateMap.get(dateKey)![entry.keyword] = entry.rank;
+  });
+  const sortedDates = Array.from(dateMap.keys()).sort();
+
+  // SVGグラフ生成
+  let chartSvg = "";
+  if (sortedDates.length >= 2) {
+    const width = 700;
+    const height = 300;
+    const padding = { top: 30, right: 20, bottom: 40, left: 50 };
+    const plotW = width - padding.left - padding.right;
+    const plotH = height - padding.top - padding.bottom;
+
+    let maxRank = 20;
+    dateMap.forEach((ranks) => {
+      Object.values(ranks).forEach((r) => {
+        if (r !== null && r > maxRank) maxRank = r;
+      });
+    });
+
+    const xStep = sortedDates.length > 1 ? plotW / (sortedDates.length - 1) : plotW;
+
+    // グリッドライン
+    let gridLines = "";
+    for (let r = 1; r <= maxRank; r += Math.max(1, Math.floor(maxRank / 5))) {
+      const y = padding.top + (r - 1) / (maxRank - 1) * plotH;
+      gridLines += `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="#f0f0f0" stroke-width="1"/>`;
+      gridLines += `<text x="${padding.left - 8}" y="${y + 4}" text-anchor="end" font-size="10" fill="#94a3b8">${r}位</text>`;
+    }
+
+    // X軸ラベル
+    let xLabels = "";
+    sortedDates.forEach((date, i) => {
+      const x = padding.left + i * xStep;
+      xLabels += `<text x="${x}" y="${height - 8}" text-anchor="middle" font-size="10" fill="#94a3b8">${date}</text>`;
+    });
+
+    // 各キーワードの折れ線
+    let lines = "";
+    let legendHtml = "";
+    keywords.forEach((kw, kwIdx) => {
+      const color = COLORS[kwIdx % COLORS.length];
+      const points: string[] = [];
+      sortedDates.forEach((date, dateIdx) => {
+        const rank = dateMap.get(date)?.[kw];
+        if (rank !== null && rank !== undefined) {
+          const x = padding.left + dateIdx * xStep;
+          const y = padding.top + (rank - 1) / (maxRank - 1) * plotH;
+          points.push(`${x},${y}`);
+        }
+      });
+      if (points.length >= 2) {
+        lines += `<polyline points="${points.join(" ")}" fill="none" stroke="${color}" stroke-width="2"/>`;
+        points.forEach((p) => {
+          const [cx, cy] = p.split(",");
+          lines += `<circle cx="${cx}" cy="${cy}" r="3" fill="${color}"/>`;
+        });
+      }
+      legendHtml += `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:12px;color:#475569;"><span style="display:inline-block;width:12px;height:3px;background:${color};border-radius:2px;"></span>${kw}</span>`;
+    });
+
+    chartSvg = `
+      <div class="chart-container">
+        <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:8px;">順位推移グラフ</h3>
+        <svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:700px;">
+          ${gridLines}
+          ${xLabels}
+          ${lines}
+          <text x="${padding.left - 8}" y="${padding.top - 10}" font-size="11" fill="#64748b" text-anchor="end">順位</text>
+        </svg>
+        <div style="margin-top:8px;">${legendHtml}</div>
+      </div>
+    `;
+  }
+
+  // キーワード別テーブル行
+  const tableRows = comparisons
+    .sort((a, b) => (a.latestRank ?? 999) - (b.latestRank ?? 999))
+    .map((comp) => {
+      const rankText = comp.latestRank !== null ? `${comp.latestRank}位` : "圏外";
+      const prevText = comp.previousRank !== null ? `${comp.previousRank}位` : comp.previousDate ? "圏外" : "-";
+      let diffText = "-";
+      let diffClass = "rank-same";
+      if (comp.diff !== null) {
+        if (comp.diff > 0) {
+          diffText = `↑${comp.diff}`;
+          diffClass = "rank-up";
+        } else if (comp.diff < 0) {
+          diffText = `↓${Math.abs(comp.diff)}`;
+          diffClass = "rank-down";
+        } else {
+          diffText = "→ 変動なし";
+        }
+      }
+      return `
+        <tr>
+          <td>${comp.keyword}</td>
+          <td style="text-align:center;font-weight:700;">${rankText}</td>
+          <td style="text-align:center;">${prevText}</td>
+          <td style="text-align:center;" class="${diffClass}"><strong>${diffText}</strong></td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="ja">
+    <head>
+      <meta charset="UTF-8">
+      <title>MEO順位レポート - ${profile.name}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
+          padding: 32px;
+          color: #1e293b;
+          background: white;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .header { margin-bottom: 24px; border-bottom: 3px solid #3b82f6; padding-bottom: 16px; }
+        .header h1 { font-size: 22px; color: #1e293b; }
+        .header .sub { font-size: 13px; color: #64748b; margin-top: 4px; }
+        .header .area { font-size: 14px; color: #3b82f6; font-weight: 600; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid #e2e8f0; padding: 10px 14px; font-size: 13px; }
+        th { background: #f1f5f9; font-weight: 600; color: #334155; }
+        .rank-up { color: #16a34a; }
+        .rank-down { color: #dc2626; }
+        .rank-same { color: #6b7280; }
+        .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 24px 0; }
+        .summary-item { text-align: center; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
+        .summary-item .num { font-size: 28px; font-weight: 700; }
+        .summary-item .lbl { font-size: 11px; color: #64748b; margin-top: 2px; }
+        .chart-container { margin: 24px 0; page-break-inside: avoid; }
+        .footer { margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 11px; color: #94a3b8; text-align: center; }
+        .print-btn {
+          position: fixed; top: 16px; right: 16px;
+          background: #3b82f6; color: white; border: none;
+          padding: 10px 20px; border-radius: 8px;
+          font-size: 14px; font-weight: 600; cursor: pointer;
+        }
+        .print-btn:hover { background: #2563eb; }
+        @media print {
+          .print-btn { display: none; }
+          body { padding: 16px; }
+        }
+      </style>
+    </head>
+    <body>
+      <button class="print-btn" onclick="window.print()">印刷 / PDF保存</button>
+
+      <div class="header">
+        <h1>${profile.name} MEO順位レポート</h1>
+        <p class="area">${profile.area}</p>
+        <p class="sub">レポート日: ${reportDate}</p>
+      </div>
+
+      <div class="summary">
+        <div class="summary-item">
+          <div class="num" style="color:#1e293b;">${comparisons.length}</div>
+          <div class="lbl">チェック数</div>
+        </div>
+        <div class="summary-item">
+          <div class="num" style="color:#16a34a;">${improved.length}</div>
+          <div class="lbl">順位UP</div>
+        </div>
+        <div class="summary-item">
+          <div class="num" style="color:#dc2626;">${declined.length}</div>
+          <div class="lbl">順位DOWN</div>
+        </div>
+        <div class="summary-item">
+          <div class="num" style="color:#3b82f6;">${avgRank}</div>
+          <div class="lbl">平均順位</div>
+        </div>
+      </div>
+
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:8px;">キーワード別順位一覧</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>キーワード</th>
+            <th style="text-align:center;">現在の順位</th>
+            <th style="text-align:center;">前回の順位</th>
+            <th style="text-align:center;">変動</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows}
+        </tbody>
+      </table>
+
+      ${chartSvg}
+
+      <div class="footer">
+        MEO勝ち上げくん - MEO + LLMO コンテンツ一括生成 for Business
+      </div>
+    </body>
+    </html>
+  `;
+
+  const reportWindow = window.open("", "_blank");
+  if (reportWindow) {
+    reportWindow.document.write(html);
+    reportWindow.document.close();
+  }
+}
+
 export default function RankingChecker({ profile }: Props) {
   const [subTab, setSubTab] = useState<SubTab>("check");
   const [serpApiKey, setSerpApiKey] = useState("");
@@ -171,6 +638,20 @@ export default function RankingChecker({ profile }: Props) {
   const historyComparisons = useMemo(() => {
     return buildComparisons(history, profile.keywords || []);
   }, [history, profile.keywords]);
+
+  /** 順位変動アラート */
+  const resultAlerts = useMemo(() => {
+    const comps = Array.from(resultComparisons.values());
+    return buildAlerts(comps);
+  }, [resultComparisons]);
+
+  /** レポート出力 */
+  const handleReport = useCallback(() => {
+    const comps = historyComparisons.length > 0
+      ? historyComparisons
+      : Array.from(resultComparisons.values());
+    openReportWindow(profile, comps, history, profile.keywords || []);
+  }, [profile, historyComparisons, resultComparisons, history]);
 
   const handleCheck = async () => {
     if (!profile.name) {
@@ -360,14 +841,25 @@ export default function RankingChecker({ profile }: Props) {
             </div>
           )}
 
-          {/* チェック日 表示 */}
+          {/* チェック日 表示 + レポート出力 */}
           {results.length > 0 && lastChecked && (
-            <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-4 flex items-center gap-3">
-              <span className="text-2xl">📅</span>
-              <div>
-                <p className="text-sm font-bold text-orange-800">チェック日時</p>
-                <p className="text-lg font-bold text-orange-700">{lastChecked}</p>
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📅</span>
+                <div>
+                  <p className="text-sm font-bold text-orange-800">チェック日時</p>
+                  <p className="text-lg font-bold text-orange-700">{lastChecked}</p>
+                </div>
               </div>
+              <button
+                onClick={handleReport}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-orange-300 text-orange-700 rounded-xl text-sm font-bold hover:bg-orange-50 hover:border-orange-400 transition-all shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                レポートを出力
+              </button>
             </div>
           )}
 
@@ -391,6 +883,11 @@ export default function RankingChecker({ profile }: Props) {
                 <p className="text-xs text-gray-500">TOP10</p>
               </div>
             </div>
+          )}
+
+          {/* 順位変動アラート */}
+          {results.length > 0 && resultAlerts.length > 0 && (
+            <AlertBanners alerts={resultAlerts} />
           )}
 
           {/* 結果テーブル（チェック日・前回比較付き） */}
@@ -467,6 +964,11 @@ export default function RankingChecker({ profile }: Props) {
 
           {/* 既存の詳細テーブル（TOP3表示付き） */}
           {results.length > 0 && <RankingTable results={results} />}
+
+          {/* 競合分析パネル */}
+          {results.length > 0 && (
+            <CompetitorAnalysisPanel results={results} businessName={profile.name} />
+          )}
         </div>
       )}
 
@@ -480,6 +982,21 @@ export default function RankingChecker({ profile }: Props) {
 
       {subTab === "history" && (
         <div className="space-y-6">
+          {/* レポート出力ボタン（履歴タブ） */}
+          {historyComparisons.length > 0 && (
+            <div className="flex justify-end">
+              <button
+                onClick={handleReport}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-blue-300 text-blue-700 rounded-xl text-sm font-bold hover:bg-blue-50 hover:border-blue-400 transition-all shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                レポートを出力
+              </button>
+            </div>
+          )}
+
           {/* 最新 vs 前回 比較カード */}
           {historyComparisons.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm p-6">

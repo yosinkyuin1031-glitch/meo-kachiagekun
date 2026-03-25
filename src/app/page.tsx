@@ -277,8 +277,8 @@ export default function Home() {
         <WeeklyReminder />
       </div>
 
-      {/* タブ */}
-      <div className="max-w-5xl mx-auto px-4 pt-4">
+      {/* タブ（PC版：md以上で表示） */}
+      <div className="max-w-5xl mx-auto px-4 pt-4 hidden md:block">
         <div className="flex gap-1 bg-white rounded-xl p-1.5 shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide" style={{ WebkitOverflowScrolling: "touch" }}>
           {TABS.map((t) => (
             <button
@@ -298,7 +298,7 @@ export default function Home() {
       </div>
 
       {/* コンテンツ */}
-      <main className="max-w-5xl mx-auto px-4 py-6">
+      <main className="max-w-5xl mx-auto px-4 py-6 pb-24 md:pb-6">
         {tab === "dashboard" && (
           <div className="space-y-8">
             <DashboardTab
@@ -366,6 +366,30 @@ export default function Home() {
           />
         )}
       </main>
+
+      {/* モバイル用ボトムナビゲーション（md未満で表示） */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] md:hidden">
+        <div className="grid grid-cols-6 h-[68px]">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex flex-col items-center justify-center gap-0.5 transition-colors ${
+                tab === t.key
+                  ? "text-blue-600"
+                  : "text-gray-400"
+              }`}
+            >
+              <span className={`text-xl leading-none ${tab === t.key ? "scale-110" : ""} transition-transform`}>{t.icon}</span>
+              <span className={`text-[10px] font-medium leading-tight ${
+                tab === t.key ? "text-blue-600" : "text-gray-400"
+              }`}>{t.label}</span>
+            </button>
+          ))}
+        </div>
+        {/* セーフエリア対応（iPhoneのホームバー） */}
+        <div className="h-[env(safe-area-inset-bottom)]" />
+      </nav>
     </div>
   );
 }
