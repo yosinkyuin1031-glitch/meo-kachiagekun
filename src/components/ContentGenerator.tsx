@@ -3,7 +3,7 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { BusinessProfile, GeneratedContent } from "@/lib/types";
-import { saveContent } from "@/lib/supabase-storage";
+import { saveContent, updateContent } from "@/lib/supabase-storage";
 import {
   faqPrompt,
   blogPostPrompt,
@@ -106,6 +106,8 @@ export default function ContentGenerator({ profile, type }: Props) {
   } | null>(null);
   const [editing, setEditing] = useState(false);
   const [editedResult, setEditedResult] = useState("");
+  const [contentId, setContentId] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // SEO/OGP
   const [seoData, setSeoData] = useState<SeoData | null>(null);
@@ -199,8 +201,9 @@ export default function ContentGenerator({ profile, type }: Props) {
       setResult(content);
 
       // Save to history
+      const newId = `${type}-${Date.now()}`;
       const generated: GeneratedContent = {
-        id: `${type}-${Date.now()}`,
+        id: newId,
         type,
         title: `${TYPE_LABELS[type]}：${keyword}`,
         content,
@@ -208,15 +211,25 @@ export default function ContentGenerator({ profile, type }: Props) {
         createdAt: new Date().toISOString(),
       };
       await saveContent(generated);
+      setContentId(newId);
 
       // ブログ・FAQはSEO/OGP情報を自動生成（チェックONの場合のみ）
       if (canSeo && autoSeo) {
         generateSeoData();
       }
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "生成中にエラーが発生しました"
-      );
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("API key") || msg.includes("api_key") || msg.includes("authentication")) {
+        setError("APIキーが正しくありません。設定画面でAnthropicのAPIキーを確認してください。");
+      } else if (msg.includes("rate limit") || msg.includes("429")) {
+        setError("AIの利用回数が上限に達しました。しばらく時間をおいてから、もう一度お試しください。");
+      } else if (msg.includes("overloaded") || msg.includes("529")) {
+        setError("AIサーバーが混み合っています。1〜2分後にもう一度お試しください。");
+      } else if (msg.includes("fetch") || msg.includes("network") || msg.includes("Failed")) {
+        setError("インターネット接続を確認して、もう一度お試しください。");
+      } else {
+        setError("コンテンツの生成に失敗しました。もう一度お試しください。それでも解決しない場合は、設定画面でAPIキーをご確認ください。");
+      }
     } finally {
       setLoading(false);
     }
@@ -249,10 +262,18 @@ export default function ContentGenerator({ profile, type }: Props) {
         message: `下書きとして投稿しました${data.url ? `：${data.url}` : ""}`,
       });
     } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      let wpErrMsg = "WordPress投稿に失敗しました。設定画面でWordPressの接続情報を確認してください。";
+      if (msg.includes("401") || msg.includes("403") || msg.includes("auth")) {
+        wpErrMsg = "WordPressのユーザー名またはパスワードが正しくありません。設定画面で接続情報を確認してください。";
+      } else if (msg.includes("404")) {
+        wpErrMsg = "WordPressのサイトURLが正しくありません。設定画面でURLを確認してください。";
+      } else if (msg.includes("fetch") || msg.includes("network")) {
+        wpErrMsg = "WordPressサイトに接続できません。インターネット接続とサイトURLを確認してください。";
+      }
       setWpResult({
         success: false,
-        message:
-          err instanceof Error ? err.message : "WordPress投稿に失敗しました",
+        message: wpErrMsg,
       });
     } finally {
       setWpPosting(false);
@@ -377,10 +398,25 @@ export default function ContentGenerator({ profile, type }: Props) {
       {/* Loading indicator */}
       {loading && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
-          <div className="inline-block w-8 h-8 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mb-3" />
-          <p className="text-gray-600 text-sm">
-            {TYPE_LABELS[type]}を生成しています...
-          </p>
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative">
+              <div className="w-12 h-12 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin" />
+              <div className="absolute inset-0 w-12 h-12 border-4 border-transparent border-b-orange-300 rounded-full animate-spin" style={{ animationDirection: "reverse", animationDuration: "1.5s" }} />
+            </div>
+            <div className="space-y-2">
+              <p className="text-gray-800 text-sm font-medium animate-pulse">
+                AIが文章を作成しています...
+              </p>
+              <p className="text-gray-500 text-xs">
+                しばらくお待ちください（30秒〜1分程度）
+              </p>
+            </div>
+            <div className="flex gap-1.5 mt-2">
+              <div className="w-2 h-2 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+              <div className="w-2 h-2 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+              <div className="w-2 h-2 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+            </div>
+          </div>
         </div>
       )}
 
@@ -401,6 +437,13 @@ export default function ContentGenerator({ profile, type }: Props) {
                 }`}
               >
                 {editing ? "編集中" : "編集する"}
+              </button>
+              <button
+                onClick={handleGenerate}
+                disabled={loading}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-purple-100 text-purple-700 border border-purple-200 hover:bg-purple-200 disabled:opacity-50"
+              >
+                再生成
               </button>
               {hasWordPress && (
                 <button
@@ -437,10 +480,23 @@ export default function ContentGenerator({ profile, type }: Props) {
               />
               <div className="flex gap-2 mt-2">
                 <button
-                  onClick={() => { setResult(editedResult); setEditing(false); }}
-                  className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600"
+                  onClick={async () => {
+                    setSavingEdit(true);
+                    setResult(editedResult);
+                    if (contentId) {
+                      try {
+                        await updateContent(contentId, { content: editedResult });
+                      } catch {
+                        // ローカル保存は完了しているので無視
+                      }
+                    }
+                    setSavingEdit(false);
+                    setEditing(false);
+                  }}
+                  disabled={savingEdit}
+                  className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
                 >
-                  保存
+                  {savingEdit ? "保存中..." : "保存"}
                 </button>
                 <button
                   onClick={() => setEditing(false)}

@@ -33,12 +33,21 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      // ユーザー向けに分かりやすいメッセージに変換
+      let userMessage = "アカウントの作成に失敗しました。もう一度お試しください。";
+      if (error.message.includes("rate limit") || error.message.includes("too many")) {
+        userMessage = "しばらく時間をおいてから、もう一度お試しください。";
+      } else if (error.message.includes("invalid") && error.message.includes("email")) {
+        userMessage = "メールアドレスの形式が正しくありません。正しいメールアドレスを入力してください。";
+      } else if (error.message.includes("password")) {
+        userMessage = "パスワードは6文字以上で入力してください。";
+      }
+      return NextResponse.json({ error: userMessage }, { status: 400 });
     }
 
     if (!data.user) {
       return NextResponse.json(
-        { error: "アカウントの作成に失敗しました" },
+        { error: "アカウントの作成に失敗しました。もう一度お試しください。" },
         { status: 500 }
       );
     }
@@ -58,7 +67,7 @@ export async function POST(request: Request) {
   } catch (e) {
     console.error("signup error:", e);
     return NextResponse.json(
-      { error: "サーバーエラーが発生しました" },
+      { error: "サーバーで問題が発生しました。しばらく時間をおいてから、もう一度お試しください。" },
       { status: 500 }
     );
   }

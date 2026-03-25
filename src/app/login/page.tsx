@@ -21,7 +21,11 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setError("メールアドレスまたはパスワードが正しくありません");
+      if (error.message?.includes("rate limit") || error.message?.includes("too many")) {
+        setError("ログインの試行回数が上限に達しました。しばらく時間をおいてから、もう一度お試しください。");
+      } else {
+        setError("メールアドレスまたはパスワードが正しくありません。入力内容をご確認のうえ、もう一度お試しください。");
+      }
       setLoading(false);
       return;
     }

@@ -75,7 +75,18 @@ export default function ReviewReplyGenerator({ profile }: Props) {
         setReplies([content.trim()]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "生成中にエラーが発生しました");
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("API key") || msg.includes("api_key") || msg.includes("authentication")) {
+        setError("APIキーが正しくありません。設定画面でAnthropicのAPIキーを確認してください。");
+      } else if (msg.includes("rate limit") || msg.includes("429")) {
+        setError("AIの利用回数が上限に達しました。しばらく時間をおいてから、もう一度お試しください。");
+      } else if (msg.includes("overloaded") || msg.includes("529")) {
+        setError("AIサーバーが混み合っています。1〜2分後にもう一度お試しください。");
+      } else if (msg.includes("fetch") || msg.includes("network") || msg.includes("Failed")) {
+        setError("インターネット接続を確認して、もう一度お試しください。");
+      } else {
+        setError("返信文の生成に失敗しました。もう一度お試しください。それでも解決しない場合は、設定画面でAPIキーをご確認ください。");
+      }
     } finally {
       setLoading(false);
     }

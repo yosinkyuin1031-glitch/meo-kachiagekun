@@ -37,7 +37,7 @@ export default function SignupPage() {
       const result = await res.json();
 
       if (!res.ok) {
-        setError(result.error || "登録に失敗しました");
+        setError(result.error || "登録に失敗しました。しばらく時間をおいてから、もう一度お試しください。");
         setLoading(false);
         return;
       }
@@ -53,10 +53,10 @@ export default function SignupPage() {
         return;
       }
 
-      setError("アカウントは作成されましたが、自動ログインに失敗しました。ログインページからログインしてください。");
+      setError("アカウントは作成できましたが、自動ログインに失敗しました。お手数ですが、ログインページからメールアドレスとパスワードを入力してログインしてください。");
       setLoading(false);
     } catch {
-      setError("通信エラーが発生しました。もう一度お試しください。");
+      setError("インターネット接続を確認して、もう一度お試しください。");
       setLoading(false);
     }
   };

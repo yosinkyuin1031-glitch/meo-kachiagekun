@@ -200,9 +200,20 @@ export default function BulkGenerator({ profile }: Props) {
     try {
       data = JSON.parse(text);
     } catch {
-      throw new Error(`API応答の解析に失敗しました（${type}）: ${text.slice(0, 100)}`);
+      throw new Error("AIからの応答を処理できませんでした。もう一度お試しください。");
     }
-    if (!res.ok) throw new Error(data.error || `APIエラー（${res.status}）`);
+    if (!res.ok) {
+      const errMsg = data.error || "";
+      if (errMsg.includes("API key") || errMsg.includes("api_key") || errMsg.includes("authentication")) {
+        throw new Error("APIキーが正しくありません。設定画面でAnthropicのAPIキーを確認してください。");
+      } else if (errMsg.includes("rate limit") || res.status === 429) {
+        throw new Error("AIの利用回数が上限に達しました。しばらく時間をおいてから、もう一度お試しください。");
+      } else if (errMsg.includes("overloaded") || res.status === 529) {
+        throw new Error("AIサーバーが混み合っています。1〜2分後にもう一度お試しください。");
+      } else {
+        throw new Error("コンテンツの生成に失敗しました。もう一度お試しください。");
+      }
+    }
     return data.content as string;
   };
 
@@ -232,9 +243,18 @@ export default function BulkGenerator({ profile }: Props) {
     try {
       data = JSON.parse(text);
     } catch {
-      throw new Error(`WordPress応答の解析に失敗: ${text.slice(0, 100)}`);
+      throw new Error("WordPressからの応答を処理できませんでした。WordPressサイトが正常に動作しているか確認してください。");
     }
-    if (!res.ok) throw new Error(data.error || "WordPress投稿に失敗しました");
+    if (!res.ok) {
+      const errMsg = data.error || "";
+      if (res.status === 401 || res.status === 403) {
+        throw new Error("WordPressのユーザー名またはパスワードが正しくありません。設定画面で接続情報を確認してください。");
+      } else if (res.status === 404) {
+        throw new Error("WordPressのサイトURLが正しくありません。設定画面でURLを確認してください。");
+      } else {
+        throw new Error(errMsg || "WordPress投稿に失敗しました。設定画面でWordPressの接続情報を確認してください。");
+      }
+    }
     return { postUrl: data.postUrl as string, postId: data.postId as number };
   };
 
@@ -278,10 +298,21 @@ export default function BulkGenerator({ profile }: Props) {
     let generatedBlogHtml = "";
     let blogUrl = "";
 
+    // 生成ステップ数を計算
+    const totalSteps = [
+      contentOptions.faq || contentOptions.blog,
+      contentOptions.blog,
+      contentOptions.blog && hasWordPress && wpAutoPost,
+      contentOptions.gbp,
+      contentOptions.note,
+    ].filter(Boolean).length;
+    let currentStep = 0;
+
     try {
       // ── Step 1: FAQ生成 ──
       if (contentOptions.faq || contentOptions.blog) {
-        setProgressMessage("FAQ（よくある質問）を生成中...");
+        currentStep++;
+        setProgressMessage(`${currentStep}/${totalSteps}件目：FAQ（よくある質問）を生成中...`);
 
         const faqPrompt = faqIndividualListPrompt(profile, keyword, faqCount) + ANTI_AI_INSTRUCTION;
         const faqRaw = await callGenerate(faqPrompt, "faq");
@@ -325,7 +356,8 @@ export default function BulkGenerator({ profile }: Props) {
       // ── Step 2: ブログ生成 ──
       if (contentOptions.blog) {
         try {
-          setProgressMessage("ブログ記事を生成中...");
+          currentStep++;
+          setProgressMessage(`${currentStep}/${totalSteps}件目：ブログ記事を生成中...`);
 
           const faqContentForBlog = generatedFaqItems
             .map((f) => `Q: ${f.question}\nA: ${f.answer.replace(/<[^>]*>/g, "")}`)
@@ -341,7 +373,7 @@ export default function BulkGenerator({ profile }: Props) {
           // SEO data（autoSeo ONの場合のみ）
           let seoData: SeoData = {};
           if (autoSeo) {
-          setProgressMessage("ブログSEO情報を生成中...");
+          setProgressMessage(`${currentStep}/${totalSteps}件目：ブログSEO情報を生成中...`);
           try {
             const seoRaw = await callGenerate(
               bulkBlogSeoPrompt(profile, keyword),
@@ -373,7 +405,8 @@ export default function BulkGenerator({ profile }: Props) {
 
           // ── Step 3: WordPress投稿 ──
           if (hasWordPress && wpAutoPost) {
-            setProgressMessage("WordPressに下書き投稿中...");
+            currentStep++;
+            setProgressMessage(`${currentStep}/${totalSteps}件目：WordPressに下書き投稿中...`);
             try {
               const blogTitle = topic || generatedFaqItems[0]?.blogTitle || `${keyword}の原因と改善法`;
               const slug = generatedFaqItems[0]?.blogSlug || `${keyword}-guide-${Date.now()}`;
@@ -392,7 +425,7 @@ export default function BulkGenerator({ profile }: Props) {
                 wpPostId: wpResult.postId,
               });
             } catch (wpErr) {
-              const errMsg = wpErr instanceof Error ? wpErr.message : "ブログ投稿に失敗しました";
+              const errMsg = wpErr instanceof Error ? wpErr.message : "WordPressへのブログ投稿に失敗しました。設定画面で接続情報を確認してください。";
               setBlogWpError(errMsg);
 
               await saveContent({
@@ -415,7 +448,7 @@ export default function BulkGenerator({ profile }: Props) {
             });
           }
         } catch (blogErr) {
-          const errMsg = blogErr instanceof Error ? blogErr.message : "ブログ生成に失敗しました";
+          const errMsg = blogErr instanceof Error ? blogErr.message : "ブログ記事の生成に失敗しました。もう一度お試しください。";
           setError((prev) => prev ? `${prev}\nブログ: ${errMsg}` : `ブログ: ${errMsg}`);
         }
       }
@@ -423,7 +456,8 @@ export default function BulkGenerator({ profile }: Props) {
       // ── Step 4: GBP投稿文生成 ──
       if (contentOptions.gbp) {
         try {
-          setProgressMessage("GBP投稿文を生成中...");
+          currentStep++;
+          setProgressMessage(`${currentStep}/${totalSteps}件目：GBP投稿文を生成中...`);
           const gbpPrompt =
             gbpWithBlogUrlPrompt(profile, keyword, blogUrl || "") + ANTI_AI_INSTRUCTION;
           const generatedGbp = await callGenerate(gbpPrompt, "gbp");
@@ -438,15 +472,16 @@ export default function BulkGenerator({ profile }: Props) {
             createdAt: new Date().toISOString(),
           });
         } catch (gbpErr) {
-          const errMsg = gbpErr instanceof Error ? gbpErr.message : "GBP生成に失敗しました";
-          setError((prev) => prev ? `${prev}\nGBP: ${errMsg}` : `GBP: ${errMsg}`);
+          const errMsg = gbpErr instanceof Error ? gbpErr.message : "GBP投稿文の生成に失敗しました。もう一度お試しください。";
+          setError((prev) => prev ? `${prev}\nGBP投稿: ${errMsg}` : `GBP投稿: ${errMsg}`);
         }
       }
 
       // ── Step 5: note記事生成 ──
       if (contentOptions.note) {
         try {
-          setProgressMessage("note記事を生成中...");
+          currentStep++;
+          setProgressMessage(`${currentStep}/${totalSteps}件目：note記事を生成中...`);
           const notePrompt =
             noteWithBlogUrlPrompt(profile, keyword, blogUrl || "") + ANTI_AI_INSTRUCTION;
           const generatedNote = await callGenerate(notePrompt, "note");
@@ -464,14 +499,21 @@ export default function BulkGenerator({ profile }: Props) {
             createdAt: new Date().toISOString(),
           });
         } catch (noteErr) {
-          const errMsg = noteErr instanceof Error ? noteErr.message : "note生成に失敗しました";
-          setError((prev) => prev ? `${prev}\nnote: ${errMsg}` : `note: ${errMsg}`);
+          const errMsg = noteErr instanceof Error ? noteErr.message : "note記事の生成に失敗しました。もう一度お試しください。";
+          setError((prev) => prev ? `${prev}\nnote記事: ${errMsg}` : `note記事: ${errMsg}`);
         }
       }
 
       setProgressMessage("完了！");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "エラーが発生しました");
+      const msg = e instanceof Error ? e.message : "";
+      if (msg.includes("API key") || msg.includes("api_key") || msg.includes("authentication")) {
+        setError("APIキーが正しくありません。設定画面でAnthropicのAPIキーを確認してください。");
+      } else if (msg.includes("fetch") || msg.includes("network") || msg.includes("Failed")) {
+        setError("インターネット接続を確認して、もう一度お試しください。");
+      } else {
+        setError(msg || "コンテンツの一括生成に失敗しました。もう一度お試しください。");
+      }
       setProgressMessage("");
     } finally {
       setIsRunning(false);
@@ -714,6 +756,20 @@ export default function BulkGenerator({ profile }: Props) {
           >
             {isRunning ? "生成中..." : "一括生成スタート"}
           </button>
+
+          {/* 生成中のインライン案内 */}
+          {isRunning && (
+            <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex gap-1">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+              <p className="text-xs text-blue-700">
+                AIが文章を作成しています...しばらくお待ちください（30秒〜1分程度）
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -871,12 +927,21 @@ export default function BulkGenerator({ profile }: Props) {
                 <CopyButton text={blogHtml} isHtml={true} label="テキストコピー" />
                 <CopyButton text={blogHtml} label="HTMLコピー" />
                 {!editingBlog && (
-                  <button
-                    onClick={() => { setEditBlogValue(blogHtml); setEditingBlog(true); }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200"
-                  >
-                    編集する
-                  </button>
+                  <>
+                    <button
+                      onClick={() => { setEditBlogValue(blogHtml); setEditingBlog(true); }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200"
+                    >
+                      編集する
+                    </button>
+                    <button
+                      onClick={() => { if (!isRunning) runBulkGeneration(); }}
+                      disabled={isRunning}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-purple-100 text-purple-700 border border-purple-200 hover:bg-purple-200 disabled:opacity-50"
+                    >
+                      再生成
+                    </button>
+                  </>
                 )}
               </div>
 
@@ -899,7 +964,7 @@ export default function BulkGenerator({ profile }: Props) {
               )}
               {blogWpError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                  <p className="text-xs text-red-600">WP投稿エラー: {blogWpError}</p>
+                  <p className="text-xs text-red-600">WordPress投稿: {blogWpError}</p>
                 </div>
               )}
 
@@ -912,7 +977,7 @@ export default function BulkGenerator({ profile }: Props) {
                     className="w-full min-h-[300px] px-4 py-3 border border-gray-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-400 outline-none resize-y"
                   />
                   <div className="flex gap-2">
-                    <button onClick={() => { setBlogHtml(editBlogValue); setEditingBlog(false); }} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600">保存</button>
+                    <button onClick={async () => { setBlogHtml(editBlogValue); setEditingBlog(false); try { await updateContent(`blog-bulk-${keyword}`, { content: editBlogValue }); } catch {} }} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600">保存</button>
                     <button onClick={() => setEditingBlog(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200">キャンセル</button>
                   </div>
                 </div>
@@ -1011,12 +1076,21 @@ export default function BulkGenerator({ profile }: Props) {
               <div className="flex justify-end gap-2">
                 <CopyButton text={gbpPost} label="GBP投稿文をコピー" />
                 {!editingGbp && (
-                  <button
-                    onClick={() => { setEditGbpValue(gbpPost); setEditingGbp(true); }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200"
-                  >
-                    編集する
-                  </button>
+                  <>
+                    <button
+                      onClick={() => { setEditGbpValue(gbpPost); setEditingGbp(true); }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200"
+                    >
+                      編集する
+                    </button>
+                    <button
+                      onClick={() => { if (!isRunning) runBulkGeneration(); }}
+                      disabled={isRunning}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-purple-100 text-purple-700 border border-purple-200 hover:bg-purple-200 disabled:opacity-50"
+                    >
+                      再生成
+                    </button>
+                  </>
                 )}
               </div>
               {editingGbp ? (
@@ -1027,7 +1101,7 @@ export default function BulkGenerator({ profile }: Props) {
                     className="w-full min-h-[300px] px-4 py-3 border border-gray-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-400 outline-none resize-y"
                   />
                   <div className="flex gap-2">
-                    <button onClick={() => { setGbpPost(editGbpValue); setEditingGbp(false); }} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600">保存</button>
+                    <button onClick={async () => { setGbpPost(editGbpValue); setEditingGbp(false); try { await updateContent(`gbp-bulk-${keyword}`, { content: editGbpValue }); } catch {} }} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600">保存</button>
                     <button onClick={() => setEditingGbp(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200">キャンセル</button>
                   </div>
                 </div>
@@ -1055,12 +1129,21 @@ export default function BulkGenerator({ profile }: Props) {
               <div className="flex justify-end gap-2">
                 <CopyButton text={noteArticle} label="note記事をコピー" />
                 {!editingNote && (
-                  <button
-                    onClick={() => { setEditNoteValue(noteArticle); setEditingNote(true); }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200"
-                  >
-                    編集する
-                  </button>
+                  <>
+                    <button
+                      onClick={() => { setEditNoteValue(noteArticle); setEditingNote(true); }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200"
+                    >
+                      編集する
+                    </button>
+                    <button
+                      onClick={() => { if (!isRunning) runBulkGeneration(); }}
+                      disabled={isRunning}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-purple-100 text-purple-700 border border-purple-200 hover:bg-purple-200 disabled:opacity-50"
+                    >
+                      再生成
+                    </button>
+                  </>
                 )}
               </div>
               {editingNote ? (
@@ -1071,7 +1154,7 @@ export default function BulkGenerator({ profile }: Props) {
                     className="w-full min-h-[300px] px-4 py-3 border border-gray-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-400 outline-none resize-y"
                   />
                   <div className="flex gap-2">
-                    <button onClick={() => { setNoteArticle(editNoteValue); setEditingNote(false); }} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600">保存</button>
+                    <button onClick={async () => { setNoteArticle(editNoteValue); setEditingNote(false); try { await updateContent(`note-bulk-${keyword}`, { content: editNoteValue }); } catch {} }} className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600">保存</button>
                     <button onClick={() => setEditingNote(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200">キャンセル</button>
                   </div>
                 </div>

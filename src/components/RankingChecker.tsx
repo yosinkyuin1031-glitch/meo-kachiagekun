@@ -174,21 +174,21 @@ export default function RankingChecker({ profile }: Props) {
 
   const handleCheck = async () => {
     if (!profile.name) {
-      setError("設定画面で院名を登録してください");
+      setError("院名が登録されていません。「設定」タブを開いて、院名を入力してください。");
       return;
     }
     if (!profile.area) {
-      setError("設定画面でエリアを登録してください");
+      setError("エリアが登録されていません。「設定」タブを開いて、エリア（例：新宿区）を入力してください。");
       return;
     }
     if (!profile.keywords || profile.keywords.length === 0) {
-      setError("設定画面で症状キーワードを登録してください");
+      setError("キーワードが登録されていません。「設定」タブを開いて、チェックしたい症状キーワード（例：腰痛、肩こり）を登録してください。");
       return;
     }
 
     const key = serpApiKey.trim();
     if (!key) {
-      setError("SerpApi APIキーを入力してください");
+      setError("SerpApi APIキーが入力されていません。上の入力欄にSerpApiのAPIキーを入力してください。");
       return;
     }
 
@@ -210,7 +210,14 @@ export default function RankingChecker({ profile }: Props) {
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "チェックに失敗しました");
+        const errMsg = data.error || "";
+        if (errMsg.includes("API key") || errMsg.includes("Invalid")) {
+          setError("SerpApiのAPIキーが正しくありません。入力内容を確認してください。");
+        } else if (errMsg.includes("rate limit") || errMsg.includes("limit")) {
+          setError("SerpApiの利用回数が上限に達しました。月の利用回数をserpapi.comで確認してください。");
+        } else {
+          setError("順位チェックに失敗しました。もう一度お試しください。");
+        }
         return;
       }
 
@@ -229,7 +236,7 @@ export default function RankingChecker({ profile }: Props) {
       await addRankingHistory(newEntries);
       setHistory(await getRankingHistory());
     } catch {
-      setError("通信エラーが発生しました");
+      setError("インターネット接続を確認して、もう一度お試しください。");
     } finally {
       setChecking(false);
     }

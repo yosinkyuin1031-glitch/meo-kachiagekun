@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { BusinessProfile, GbpMaterialImage, ImageCategory } from "@/lib/types";
 import { getGbpImages, saveGbpImage, deleteGbpImage } from "@/lib/supabase-storage";
+import { ConfirmDialog, useConfirmDialog } from "./ConfirmDialog";
 
 interface Props {
   profile: BusinessProfile;
@@ -130,10 +131,13 @@ export default function GbpImageGenerator({ profile }: Props) {
     }
   };
 
+  const { confirmingId: deletingImageId, requestConfirm: requestDeleteImage, cancelConfirm: cancelDeleteImage, isConfirming: isConfirmingDeleteImage } = useConfirmDialog();
+
   const handleDeleteImage = async (id: string) => {
     await deleteGbpImage(id);
     setImages(await getGbpImages());
     if (selectedImageId === id) setSelectedImageId(null);
+    cancelDeleteImage();
   };
 
   // ---------- テキスト折り返し ----------
@@ -558,13 +562,33 @@ export default function GbpImageGenerator({ profile }: Props) {
                         alt={img.name}
                         className="w-full aspect-square object-cover rounded-lg border border-gray-200"
                       />
-                      <button
-                        onClick={() => handleDeleteImage(img.id)}
-                        className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                        title="削除"
-                      >
-                        ×
-                      </button>
+                      {isConfirmingDeleteImage(img.id) ? (
+                        <div className="absolute inset-0 bg-black/60 rounded-lg flex flex-col items-center justify-center gap-2 p-2">
+                          <p className="text-white text-[10px] text-center">削除しますか？</p>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleDeleteImage(img.id)}
+                              className="px-2 py-1 bg-red-500 text-white rounded text-[10px] font-medium hover:bg-red-600"
+                            >
+                              削除
+                            </button>
+                            <button
+                              onClick={cancelDeleteImage}
+                              className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-[10px] font-medium hover:bg-gray-300"
+                            >
+                              戻る
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => requestDeleteImage(img.id)}
+                          className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                          title="削除"
+                        >
+                          ×
+                        </button>
+                      )}
                       <p className="text-[10px] text-gray-400 mt-1 truncate">{img.name}</p>
                     </div>
                   ))}

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { ClinicProfile, WordPressSettings, NoteProfile } from "@/lib/types";
 import { getSerpApiKey, saveSerpApiKey } from "@/lib/supabase-storage";
+import { ConfirmDialog, useConfirmDialog } from "./ConfirmDialog";
 
 interface Props {
   clinics: ClinicProfile[];
@@ -31,6 +32,7 @@ export default function SettingsTab({
   const [keyError, setKeyError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(clinics.length === 0);
+  const { confirmingId: deletingClinicId, requestConfirm: requestDeleteClinic, cancelConfirm: cancelDeleteClinic, isConfirming: isConfirmingDeleteClinic } = useConfirmDialog();
 
   // SerpApi
   const [serpApiKey, setSerpApiKey] = useState("");
@@ -44,12 +46,12 @@ export default function SettingsTab({
   const handleSaveApiKey = async () => {
     if (!apiKey.trim()) {
       setKeyStatus("invalid");
-      setKeyError("APIキーを入力してください");
+      setKeyError("APIキーが入力されていません。AnthropicのAPIキーを入力してください。");
       return;
     }
     if (!apiKey.trim().startsWith("sk-ant-")) {
       setKeyStatus("invalid");
-      setKeyError("「sk-ant-」で始まるキーを入力してください");
+      setKeyError("APIキーの形式が正しくありません。「sk-ant-」で始まるAnthropicのAPIキーを入力してください。");
       return;
     }
 
@@ -70,7 +72,7 @@ export default function SettingsTab({
         setTimeout(() => setKeyStatus("saved"), 2000);
       } else {
         setKeyStatus("invalid");
-        setKeyError(data.error || "接続できませんでした");
+        setKeyError(data.error || "APIキーの接続テストに失敗しました。キーが正しいか確認してください。");
       }
     } catch {
       // テスト失敗してもキー自体は保存済み
@@ -116,11 +118,11 @@ export default function SettingsTab({
                   setTimeout(() => setKeyStatus("idle"), 3000);
                 } else {
                   setKeyStatus("invalid");
-                  setKeyError(data.error || "サーバーAPIキーが未設定または無効です");
+                  setKeyError(data.error || "サーバー側のAPIキーが設定されていないか、無効です。管理者にお問い合わせください。");
                 }
               } catch {
                 setKeyStatus("invalid");
-                setKeyError("接続テストに失敗しました");
+                setKeyError("インターネット接続を確認して、もう一度お試しください。");
               }
             }}
             disabled={keyStatus === "testing"}
@@ -279,19 +281,24 @@ export default function SettingsTab({
                       >
                         編集
                       </button>
-                      {clinics.length > 1 && (
+                      {clinics.length > 1 && !isConfirmingDeleteClinic(clinic.id) && (
                         <button
-                          onClick={() => {
-                            if (confirm(`「${clinic.name}」を削除しますか？`)) {
-                              onDeleteClinic(clinic.id);
-                            }
-                          }}
+                          onClick={() => requestDeleteClinic(clinic.id)}
                           className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs hover:bg-red-100"
                         >
                           削除
                         </button>
                       )}
                     </div>
+                    {isConfirmingDeleteClinic(clinic.id) && (
+                      <div className="mt-3">
+                        <ConfirmDialog
+                          message={`「${clinic.name}」を削除しますか？この操作は取り消せません。`}
+                          onConfirm={() => { onDeleteClinic(clinic.id); cancelDeleteClinic(); }}
+                          onCancel={cancelDeleteClinic}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -495,7 +502,7 @@ function ClinicEditForm({
 
   const testWordPress = async () => {
     if (!wpSiteUrl || !wpUsername || !wpAppPassword) {
-      setWpTestResult({ type: "error", message: "サイトURL・ユーザー名・アプリケーションパスワードをすべて入力してください" });
+      setWpTestResult({ type: "error", message: "WordPress接続に必要な情報が不足しています。サイトURL、ユーザー名、アプリケーションパスワードの3つをすべて入力してください。" });
       return;
     }
 
@@ -525,11 +532,11 @@ function ClinicEditForm({
       if (!res.ok) {
         let errorMsg = data.error || `接続エラー (${res.status})`;
         if (res.status === 401 || res.status === 403) {
-          errorMsg += "\nユーザー名またはアプリケーションパスワードを確認してください。パスワードはスペースを含めてそのまま入力してください。";
+          errorMsg = "WordPressのユーザー名またはアプリケーションパスワードが正しくありません。パスワードはスペースを含めてそのまま入力してください。";
         } else if (res.status === 404) {
-          errorMsg = "WordPress REST APIが見つかりません。サイトURLを確認してください（例: https://your-site.com）";
+          errorMsg = "WordPressのサイトURLが正しくありません。「https://あなたのサイト.com」の形式で入力してください。";
         } else if (res.status >= 500) {
-          errorMsg = "WordPressサーバーでエラーが発生しました。しばらく待ってから再試行してください。";
+          errorMsg = "WordPressサーバーで問題が発生しました。しばらく時間をおいてから、もう一度お試しください。";
         }
         setWpTestResult({ type: "error", message: errorMsg });
       } else {
@@ -549,9 +556,9 @@ function ClinicEditForm({
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("fetch") || msg.includes("network") || msg.includes("Failed")) {
-        setWpTestResult({ type: "error", message: "ネットワークエラー: サイトURLが正しいか確認してください。" });
+        setWpTestResult({ type: "error", message: "インターネット接続を確認してください。また、サイトURLが正しいかもご確認ください。" });
       } else {
-        setWpTestResult({ type: "error", message: `接続失敗: ${msg || "不明なエラー"}` });
+        setWpTestResult({ type: "error", message: "WordPressへの接続に失敗しました。サイトURL、ユーザー名、パスワードを確認して、もう一度お試しください。" });
       }
     } finally {
       setWpTesting(false);
