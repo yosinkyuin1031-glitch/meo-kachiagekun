@@ -4,6 +4,7 @@ import pg from "pg";
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
 });
 
 export async function POST(request: Request) {
@@ -59,9 +60,10 @@ export async function POST(request: Request) {
     );
 
     return NextResponse.json({ ok: true, userId: data.user.id });
-  } catch {
+  } catch (e) {
+    console.error("signup error:", e);
     return NextResponse.json(
-      { error: "サーバーエラーが発生しました" },
+      { error: "サーバーエラーが発生しました", detail: e instanceof Error ? e.message : String(e) },
       { status: 500 }
     );
   }
