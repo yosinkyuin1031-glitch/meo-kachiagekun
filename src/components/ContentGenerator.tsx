@@ -3,13 +3,15 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { BusinessProfile, GeneratedContent } from "@/lib/types";
-import { saveContent, updateContent } from "@/lib/supabase-storage";
+import { saveContent, updateContent, getContentInsight, getRankingInsight, saveFeedback, GenerationFeedback } from "@/lib/supabase-storage";
+import { checkMedicalGuidelines, GuidelineCheckResult } from "@/lib/medical-guidelines";
 import {
   faqPrompt,
   blogPostPrompt,
   gbpPostPrompt,
   noteArticlePrompt,
   blogSeoPrompt,
+  AccumulatedContext,
 } from "@/lib/prompts";
 
 interface Props {
@@ -114,6 +116,15 @@ export default function ContentGenerator({ profile, type }: Props) {
   const [seoLoading, setSeoLoading] = useState(false);
   const [autoSeo, setAutoSeo] = useState(true);
 
+  // 医療広告ガイドラインチェック
+  const [guidelineCheck, setGuidelineCheck] = useState<GuidelineCheckResult | null>(null);
+
+  // フィードバック評価
+  const [feedbackSent, setFeedbackSent] = useState(false);
+  const [feedbackType, setFeedbackType] = useState<"good" | "needs_improvement" | null>(null);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [showFeedbackComment, setShowFeedbackComment] = useState(false);
+
   const needsTopic = type === "blog" || type === "note";
   const canSeo = type === "blog" || type === "faq";
   const hasWordPress =
@@ -122,20 +133,27 @@ export default function ContentGenerator({ profile, type }: Props) {
     profile.wordpress?.username &&
     profile.wordpress?.appPassword;
 
-  function buildPrompt(): string {
+  async function buildPrompt(): Promise<string> {
+    // 蓄積データを取得してコンテキストに含める
+    const [contentInsight, rankingInsight] = await Promise.all([
+      getContentInsight(keyword),
+      getRankingInsight(keyword),
+    ]);
+    const accCtx: AccumulatedContext = { contentInsight, rankingInsight };
+
     let prompt = "";
     switch (type) {
       case "faq":
-        prompt = faqPrompt(profile, keyword);
+        prompt = faqPrompt(profile, keyword, accCtx);
         break;
       case "blog":
-        prompt = blogPostPrompt(profile, keyword, topic);
+        prompt = blogPostPrompt(profile, keyword, topic, accCtx);
         break;
       case "gbp":
-        prompt = gbpPostPrompt(profile, keyword, gbpPostType);
+        prompt = gbpPostPrompt(profile, keyword, gbpPostType, accCtx);
         break;
       case "note":
-        prompt = noteArticlePrompt(profile, keyword, topic);
+        prompt = noteArticlePrompt(profile, keyword, topic, accCtx);
         break;
     }
     return prompt + ANTI_AI_INSTRUCTION;
@@ -187,9 +205,14 @@ export default function ContentGenerator({ profile, type }: Props) {
     setResult("");
     setWpResult(null);
     setSeoData(null);
+    setGuidelineCheck(null);
+    setFeedbackSent(false);
+    setFeedbackType(null);
+    setFeedbackComment("");
+    setShowFeedbackComment(false);
 
     try {
-      const prompt = buildPrompt();
+      const prompt = await buildPrompt();
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -199,6 +222,10 @@ export default function ContentGenerator({ profile, type }: Props) {
       if (!res.ok) throw new Error(data.error);
       const content = data.content as string;
       setResult(content);
+
+      // 医療広告ガイドラインチェック
+      const checkResult = checkMedicalGuidelines(content);
+      setGuidelineCheck(checkResult);
 
       // Save to history
       const newId = `${type}-${Date.now()}`;
@@ -520,6 +547,111 @@ export default function ContentGenerator({ profile, type }: Props) {
               ) : (
                 <div className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
                   {result}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 医療広告ガイドラインチェック結果 */}
+          {guidelineCheck && (
+            <div className={`mt-4 rounded-lg p-4 ${
+              guidelineCheck.hasViolation
+                ? "bg-yellow-50 border border-yellow-300"
+                : "bg-green-50 border border-green-200"
+            }`}>
+              {guidelineCheck.hasViolation ? (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-yellow-600 font-bold text-sm">&#9888; 医療広告ガイドライン注意</span>
+                  </div>
+                  <div className="space-y-1">
+                    {guidelineCheck.suggestions.map((s, i) => (
+                      <p key={i} className="text-xs text-yellow-800">{s}</p>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-sm font-medium text-green-700">ガイドラインチェック: OK</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* フィードバック評価 */}
+          {result && !loading && (
+            <div className="mt-4 border border-gray-200 rounded-lg p-4 bg-gray-50/50">
+              <p className="text-xs font-medium text-gray-600 mb-2">この生成結果を評価してください</p>
+              {feedbackSent ? (
+                <p className="text-sm text-green-600 font-medium">評価を送信しました。ありがとうございます。</p>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        setFeedbackType("good");
+                        const fb: GenerationFeedback = {
+                          id: `fb-${Date.now()}`,
+                          contentId,
+                          type: "good",
+                          originalContent: result,
+                          createdAt: new Date().toISOString(),
+                        };
+                        try { await saveFeedback(fb); } catch { /* localStorage fallback handled in saveFeedback */ }
+                        setFeedbackSent(true);
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        feedbackType === "good"
+                          ? "bg-green-500 text-white"
+                          : "bg-green-100 text-green-700 border border-green-200 hover:bg-green-200"
+                      }`}
+                    >
+                      良い
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFeedbackType("needs_improvement");
+                        setShowFeedbackComment(true);
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        feedbackType === "needs_improvement"
+                          ? "bg-orange-500 text-white"
+                          : "bg-orange-100 text-orange-700 border border-orange-200 hover:bg-orange-200"
+                      }`}
+                    >
+                      改善が必要
+                    </button>
+                  </div>
+                  {showFeedbackComment && (
+                    <div className="space-y-2">
+                      <textarea
+                        value={feedbackComment}
+                        onChange={(e) => setFeedbackComment(e.target.value)}
+                        placeholder="改善点をご記入ください（任意）"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none resize-y min-h-[60px]"
+                      />
+                      <button
+                        onClick={async () => {
+                          const fb: GenerationFeedback = {
+                            id: `fb-${Date.now()}`,
+                            contentId,
+                            type: "bad",
+                            originalContent: result,
+                            note: feedbackComment || undefined,
+                            createdAt: new Date().toISOString(),
+                          };
+                          try { await saveFeedback(fb); } catch { /* fallback */ }
+                          setFeedbackSent(true);
+                        }}
+                        className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600"
+                      >
+                        送信
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -11,7 +11,9 @@ import {
   addClinic,
   updateClinic,
   deleteClinic,
+  getRankingHistory,
 } from "@/lib/supabase-storage";
+import { RankingHistory } from "@/lib/ranking-types";
 import { useAuth } from "@/contexts/AuthContext";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import BulkGenerator from "@/components/BulkGenerator";
@@ -55,6 +57,7 @@ export default function Home() {
   const { user, loading: authLoading, signOut } = useAuth();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [contentSubTab, setContentSubTab] = useState<ContentSubTab>("bulk");
+  const [regenerateKeyword, setRegenerateKeyword] = useState("");
   const [profile, setProfile] = useState<BusinessProfile>({
     name: "", area: "", keywords: [], description: "", category: "整体院", anthropicKey: "",
   });
@@ -308,6 +311,11 @@ export default function Home() {
               activeClinic={activeClinic}
               hasWordPress={hasWordPress}
               onNavigate={setTab}
+              onRegenerateKeyword={(kw) => {
+                setRegenerateKeyword(kw);
+                setContentSubTab("bulk");
+                setTab("bulk");
+              }}
             />
             <AnalyticsDashboard />
           </div>
@@ -333,7 +341,7 @@ export default function Home() {
             </div>
 
             <div style={{ display: contentSubTab === "bulk" ? "block" : "none" }}>
-              <BulkGenerator profile={profile} />
+              <BulkGenerator profile={profile} initialKeyword={regenerateKeyword} onKeywordConsumed={() => setRegenerateKeyword("")} />
             </div>
             {contentSubTab === "faq" && <ContentGenerator profile={profile} type="faq" />}
             {contentSubTab === "blog" && <ContentGenerator profile={profile} type="blog" />}
@@ -349,7 +357,14 @@ export default function Home() {
         {tab === "ranking" && (
           <div className="space-y-8">
             <SearchConsolePanel profile={profile} onKeywordsImport={handleKeywordsImport} />
-            <RankingChecker profile={profile} />
+            <RankingChecker
+              profile={profile}
+              onRegenerateKeyword={(kw) => {
+                setRegenerateKeyword(kw);
+                setContentSubTab("bulk");
+                setTab("bulk");
+              }}
+            />
           </div>
         )}
 
@@ -416,17 +431,42 @@ function DashboardTab({
   activeClinic,
   hasWordPress,
   onNavigate,
+  onRegenerateKeyword,
 }: {
   profile: BusinessProfile;
   activeClinic: ClinicProfile | undefined;
   hasWordPress: boolean;
   onNavigate: (tab: Tab) => void;
+  onRegenerateKeyword?: (keyword: string) => void;
 }) {
   const [contents, setContents] = useState<GeneratedContent[]>([]);
+  const [rankingHistory, setRankingHistory] = useState<RankingHistory[]>([]);
 
   useEffect(() => {
     getContents().then(setContents);
+    getRankingHistory().then(setRankingHistory);
   }, []);
+
+  // 順位低下キーワード計算
+  const declinedKeywords = useMemo(() => {
+    if (!profile.keywords || profile.keywords.length === 0) return [];
+    const declined: { keyword: string; previousRank: number; latestRank: number | null; diff: number }[] = [];
+    for (const kw of profile.keywords) {
+      const kwHistory = rankingHistory
+        .filter((h) => h.keyword === kw)
+        .sort((a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime());
+      if (kwHistory.length < 2) continue;
+      const latest = kwHistory[0];
+      const latestDateStr = new Date(latest.checkedAt).toLocaleDateString("ja-JP");
+      const previous = kwHistory.find((h) => new Date(h.checkedAt).toLocaleDateString("ja-JP") !== latestDateStr);
+      if (!previous || previous.rank === null || latest.rank === null) continue;
+      const diff = previous.rank - latest.rank; // positive = improvement
+      if (diff <= -3) {
+        declined.push({ keyword: kw, previousRank: previous.rank, latestRank: latest.rank, diff: Math.abs(diff) });
+      }
+    }
+    return declined;
+  }, [profile.keywords, rankingHistory]);
 
   const stats = useMemo(() => {
     const byType: Record<string, number> = {};
@@ -509,6 +549,38 @@ function DashboardTab({
                   <span className="ml-auto text-xs text-blue-500 font-medium">設定へ →</span>
                 )}
               </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 順位低下アラート */}
+      {declinedKeywords.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-red-500 font-bold text-lg">&#9660;</span>
+            <h3 className="text-sm font-bold text-red-800">
+              {declinedKeywords.length}個のキーワードで順位が下がっています
+            </h3>
+          </div>
+          <div className="space-y-2">
+            {declinedKeywords.map((d) => (
+              <div key={d.keyword} className="flex items-center justify-between bg-white rounded-lg px-4 py-2 border border-red-100">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-gray-800">{d.keyword}</span>
+                  <span className="text-xs text-red-600 font-bold">
+                    {d.previousRank}位 → {d.latestRank !== null ? `${d.latestRank}位` : "圏外"}（{d.diff}位低下）
+                  </span>
+                </div>
+                {onRegenerateKeyword && (
+                  <button
+                    onClick={() => onRegenerateKeyword(d.keyword)}
+                    className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors"
+                  >
+                    再生成
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>

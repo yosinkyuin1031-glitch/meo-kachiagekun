@@ -552,6 +552,118 @@ export async function deleteGbpImage(id: string): Promise<void> {
   await supabase().from("meo_gbp_images").delete().eq("id", id).eq("user_id", userId);
 }
 
+// ─── AI学習コンテキスト（蓄積データ活用）──────────
+
+export interface ContentInsight {
+  pastTitles: string[];
+  goodContentPatterns: string[];
+  badContentPatterns: string[];
+  totalGoodCount: number;
+  totalBadCount: number;
+}
+
+export interface RankingInsight {
+  keyword: string;
+  latestRank: number | null;
+  previousRank: number | null;
+  trend: "up" | "down" | "stable" | "unknown";
+  changeAmount: number;
+  topCompetitors: string[];
+}
+
+// キーワードの過去コンテンツと評価傾向を取得
+export async function getContentInsight(keyword: string): Promise<ContentInsight> {
+  try {
+    const userId = await getUserId();
+
+    // 過去コンテンツのタイトル一覧
+    const { data: contents } = await supabase()
+      .from("meo_contents")
+      .select("id, title, type, content")
+      .eq("user_id", userId)
+      .eq("keyword", keyword)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    const pastTitles = (contents || []).map((c) => c.title).filter(Boolean);
+
+    // フィードバック情報を取得
+    const contentIds = (contents || []).map((c) => c.id);
+    let goodContentPatterns: string[] = [];
+    let badContentPatterns: string[] = [];
+    let totalGoodCount = 0;
+    let totalBadCount = 0;
+
+    if (contentIds.length > 0) {
+      const { data: feedbacks } = await supabase()
+        .from("meo_feedbacks")
+        .select("type, content_id, note, original_content")
+        .eq("user_id", userId)
+        .in("content_id", contentIds);
+
+      if (feedbacks) {
+        totalGoodCount = feedbacks.filter((f) => f.type === "good").length;
+        totalBadCount = feedbacks.filter((f) => f.type === "bad").length;
+
+        // 良い評価のコンテンツから冒頭150文字を抽出
+        const goodIds = feedbacks.filter((f) => f.type === "good").map((f) => f.content_id);
+        goodContentPatterns = (contents || [])
+          .filter((c) => goodIds.includes(c.id))
+          .map((c) => c.content?.substring(0, 150) || "")
+          .filter(Boolean)
+          .slice(0, 3);
+
+        // 悪い評価のメモを抽出
+        badContentPatterns = feedbacks
+          .filter((f) => f.type === "bad" && f.note)
+          .map((f) => f.note as string)
+          .slice(0, 3);
+      }
+    }
+
+    return { pastTitles, goodContentPatterns, badContentPatterns, totalGoodCount, totalBadCount };
+  } catch {
+    return { pastTitles: [], goodContentPatterns: [], badContentPatterns: [], totalGoodCount: 0, totalBadCount: 0 };
+  }
+}
+
+// キーワードの順位変動を取得
+export async function getRankingInsight(keyword: string): Promise<RankingInsight> {
+  try {
+    const userId = await getUserId();
+
+    const { data } = await supabase()
+      .from("meo_ranking_history")
+      .select("rank, checked_at, top_three")
+      .eq("user_id", userId)
+      .eq("keyword", keyword)
+      .order("checked_at", { ascending: false })
+      .limit(2);
+
+    if (!data || data.length === 0) {
+      return { keyword, latestRank: null, previousRank: null, trend: "unknown", changeAmount: 0, topCompetitors: [] };
+    }
+
+    const latestRank = data[0].rank;
+    const previousRank = data.length > 1 ? data[1].rank : null;
+    const topCompetitors = ((data[0].top_three || []) as { name: string }[]).map((t) => t.name).filter(Boolean);
+
+    let trend: "up" | "down" | "stable" | "unknown" = "unknown";
+    let changeAmount = 0;
+
+    if (latestRank !== null && previousRank !== null) {
+      changeAmount = previousRank - latestRank; // 正=上昇、負=下降
+      if (changeAmount > 0) trend = "up";
+      else if (changeAmount < 0) trend = "down";
+      else trend = "stable";
+    }
+
+    return { keyword, latestRank, previousRank, trend, changeAmount, topCompetitors };
+  } catch {
+    return { keyword, latestRank: null, previousRank: null, trend: "unknown", changeAmount: 0, topCompetitors: [] };
+  }
+}
+
 // ─── チェックリスト（院ごと）────────────────────
 export async function getChecklist(clinicId?: string): Promise<ChecklistItem[]> {
   try {

@@ -15,6 +15,7 @@ import { GeneratedContent } from "@/lib/types";
 
 interface Props {
   profile: BusinessProfile;
+  onRegenerateKeyword?: (keyword: string) => void;
 }
 
 type SubTab = "check" | "history" | "trend" | "competitor" | "report" | "strategy";
@@ -613,7 +614,7 @@ function openReportWindow(
   }
 }
 
-export default function RankingChecker({ profile }: Props) {
+export default function RankingChecker({ profile, onRegenerateKeyword }: Props) {
   const [subTab, setSubTab] = useState<SubTab>("check");
   const [serpApiKey, setSerpApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -652,6 +653,11 @@ export default function RankingChecker({ profile }: Props) {
     const comps = Array.from(resultComparisons.values());
     return buildAlerts(comps);
   }, [resultComparisons]);
+
+  /** 順位低下キーワード（3位以上下がったもの） */
+  const declinedKeywords = useMemo(() => {
+    return historyComparisons.filter((c) => c.diff !== null && c.diff <= -3);
+  }, [historyComparisons]);
 
   /** レポート出力 */
   const handleReport = useCallback(() => {
@@ -890,6 +896,39 @@ export default function RankingChecker({ profile }: Props) {
           {/* 順位変動アラート */}
           {results.length > 0 && resultAlerts.length > 0 && (
             <AlertBanners alerts={resultAlerts} />
+          )}
+
+          {/* 順位低下キーワード - コンテンツ再生成提案 */}
+          {declinedKeywords.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <span className="text-red-500">&#9660;</span>
+                  順位低下キーワード（{declinedKeywords.length}件）
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">前回より3位以上下がったキーワードです。コンテンツを再生成して順位回復を目指しましょう。</p>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {declinedKeywords.map((comp) => (
+                  <div key={comp.keyword} className="flex items-center justify-between px-6 py-3 hover:bg-red-50/30 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <span className="font-medium text-gray-800 text-sm">{comp.keyword}</span>
+                      <span className="text-xs text-red-600 font-bold">
+                        {comp.previousRank}位 → {comp.latestRank !== null ? `${comp.latestRank}位` : "圏外"}（{Math.abs(comp.diff!)}位低下）
+                      </span>
+                    </div>
+                    {onRegenerateKeyword && (
+                      <button
+                        onClick={() => onRegenerateKeyword(comp.keyword)}
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors"
+                      >
+                        コンテンツを再生成
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* 結果テーブル（チェック日・前回比較付き） */}
