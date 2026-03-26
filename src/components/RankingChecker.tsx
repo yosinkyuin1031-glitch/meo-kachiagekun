@@ -6,12 +6,18 @@ import { RankingResult, RankingHistory, TopPlace } from "@/lib/ranking-types";
 import { getRankingHistory, addRankingHistory, getSerpApiKey, saveSerpApiKey } from "@/lib/supabase-storage";
 import RankingTable from "./RankingTable";
 import HistoryChart from "./HistoryChart";
+import RankingTrendChart from "./RankingTrendChart";
+import CompetitorDashboard from "./CompetitorDashboard";
+import ReportPdfExport from "./ReportPdfExport";
+import RankingAlerts from "./RankingAlerts";
+import { getContents } from "@/lib/supabase-storage";
+import { GeneratedContent } from "@/lib/types";
 
 interface Props {
   profile: BusinessProfile;
 }
 
-type SubTab = "check" | "history" | "strategy";
+type SubTab = "check" | "history" | "trend" | "competitor" | "report" | "strategy";
 
 /** キーワードごとの最新 vs 前回比較データ */
 interface KeywordComparison {
@@ -616,10 +622,12 @@ export default function RankingChecker({ profile }: Props) {
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
   const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [contents, setContents] = useState<GeneratedContent[]>([]);
 
   useEffect(() => {
     getSerpApiKey().then(setSerpApiKey);
     getRankingHistory().then(setHistory);
+    getContents().then(setContents);
   }, []);
 
   const handleSaveKey = async () => {
@@ -765,38 +773,32 @@ export default function RankingChecker({ profile }: Props) {
       </div>
 
       {/* サブタブ */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setSubTab("check")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            subTab === "check"
-              ? "bg-orange-600 text-white"
-              : "bg-white text-gray-600 hover:bg-gray-100"
-          }`}
-        >
-          🔍 ランキングチェック
-        </button>
-        <button
-          onClick={() => setSubTab("history")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            subTab === "history"
-              ? "bg-orange-600 text-white"
-              : "bg-white text-gray-600 hover:bg-gray-100"
-          }`}
-        >
-          📊 順位推移
-        </button>
-        <button
-          onClick={() => setSubTab("strategy")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            subTab === "strategy"
-              ? "bg-orange-600 text-white"
-              : "bg-white text-gray-600 hover:bg-gray-100"
-          }`}
-        >
-          🎯 戦略分析
-        </button>
+      <div className="flex gap-1 bg-white rounded-xl p-1.5 shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide" style={{ WebkitOverflowScrolling: "touch" }}>
+        {([
+          { key: "check" as SubTab, label: "ランキングチェック", icon: "🔍" },
+          { key: "history" as SubTab, label: "順位推移", icon: "📊" },
+          { key: "trend" as SubTab, label: "推移グラフ", icon: "📈" },
+          { key: "competitor" as SubTab, label: "競合比較", icon: "🏢" },
+          { key: "report" as SubTab, label: "レポート", icon: "📄" },
+          { key: "strategy" as SubTab, label: "戦略分析", icon: "🎯" },
+        ]).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setSubTab(t.key)}
+            className={`flex items-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex-shrink-0 ${
+              subTab === t.key
+                ? "bg-orange-600 text-white shadow-sm"
+                : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            }`}
+          >
+            <span>{t.icon}</span>
+            <span>{t.label}</span>
+          </button>
+        ))}
       </div>
+
+      {/* アラート通知（常時表示） */}
+      <RankingAlerts />
 
       {subTab === "check" && (
         <div className="space-y-4">
@@ -1033,6 +1035,28 @@ export default function RankingChecker({ profile }: Props) {
             keywords={profile.keywords || []}
           />
         </div>
+      )}
+
+      {subTab === "trend" && (
+        <RankingTrendChart
+          history={history}
+          keywords={profile.keywords || []}
+        />
+      )}
+
+      {subTab === "competitor" && (
+        <CompetitorDashboard
+          businessName={profile.name}
+          keywords={profile.keywords || []}
+        />
+      )}
+
+      {subTab === "report" && (
+        <ReportPdfExport
+          profile={profile}
+          history={history}
+          contents={contents}
+        />
       )}
     </div>
   );
