@@ -81,6 +81,8 @@ function dbClinicToProfile(row: Record<string, unknown>): ClinicProfile {
     strengths: (row.strengths as string) || undefined,
     experience: (row.experience as string) || undefined,
     reviews: (row.reviews as string) || undefined,
+    nearestStation: (row.nearest_station as string) || undefined,
+    coverageAreas: (row.coverage_areas as string[]) || undefined,
   };
 }
 
@@ -106,6 +108,8 @@ export async function saveClinics(clinics: ClinicProfile[]): Promise<void> {
     strengths: c.strengths || "",
     experience: c.experience || "",
     reviews: c.reviews || "",
+    nearest_station: c.nearestStation || "",
+    coverage_areas: c.coverageAreas || [],
   }));
   await supabase().from("meo_clinics").insert(rows);
 }
@@ -129,6 +133,8 @@ export async function addClinic(clinic: ClinicProfile): Promise<void> {
     strengths: clinic.strengths || "",
     experience: clinic.experience || "",
     reviews: clinic.reviews || "",
+    nearest_station: clinic.nearestStation || "",
+    coverage_areas: clinic.coverageAreas || [],
   });
 }
 
@@ -149,6 +155,8 @@ export async function updateClinic(id: string, updates: Partial<ClinicProfile>):
   if (updates.strengths !== undefined) dbUpdates.strengths = updates.strengths;
   if (updates.experience !== undefined) dbUpdates.experience = updates.experience;
   if (updates.reviews !== undefined) dbUpdates.reviews = updates.reviews;
+  if (updates.nearestStation !== undefined) dbUpdates.nearest_station = updates.nearestStation;
+  if (updates.coverageAreas !== undefined) dbUpdates.coverage_areas = updates.coverageAreas;
 
   await supabase()
     .from("meo_clinics")
