@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -8,6 +8,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -32,6 +33,32 @@ export default function LoginPage() {
 
     window.location.href = "/";
   };
+
+  const handleDemoLogin = async () => {
+    setDemoLoading(true);
+    setError("");
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: "demo@clinicapps.jp",
+      password: "demo1234",
+    });
+
+    if (error) {
+      setError("デモアカウントへのログインに失敗しました。しばらくしてからお試しください。");
+      setDemoLoading(false);
+      return;
+    }
+
+    window.location.href = "/";
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") === "true") {
+      handleDemoLogin();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white flex items-center justify-center px-4">
@@ -91,6 +118,19 @@ export default function LoginPage() {
               新規登録
             </a>
           </p>
+
+          <div style={{ borderTop: '1px solid #e5e7eb', marginTop: '24px', paddingTop: '24px', textAlign: 'center' }}>
+            <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '12px' }}>デモ体験はこちら</p>
+            <button
+              type="button"
+              onClick={handleDemoLogin}
+              disabled={demoLoading}
+              className="w-full py-3 text-white font-semibold rounded-xl disabled:opacity-50 transition-all text-sm"
+              style={{ backgroundColor: '#0ea5e9' }}
+            >
+              {demoLoading ? "デモログイン中..." : "デモアカウントでログイン"}
+            </button>
+          </div>
         </form>
 
         <div className="text-center mt-4 space-x-4">

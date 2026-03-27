@@ -347,7 +347,8 @@ export default function ReportPdfExport({ profile, history, contents }: Props) {
       }
 
       // ─── フッター ───
-      const totalPages = doc.getNumberOfPages();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const totalPages = (doc as any).getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
         doc.setFontSize(7);
