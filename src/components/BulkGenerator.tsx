@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import DOMPurify from "dompurify";
 import { BusinessProfile, GeneratedContent } from "@/lib/types";
 import { saveContent, updateContent, getContentsByKeyword, getContentInsight, getRankingInsight, saveFeedback, GenerationFeedback } from "@/lib/supabase-storage";
 import { checkMedicalGuidelines, GuidelineCheckResult } from "@/lib/medical-guidelines";
@@ -1080,7 +1081,7 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
                   <div
                     className="text-sm text-gray-700 whitespace-pre-wrap"
                     dangerouslySetInnerHTML={{
-                      __html: faq.answer,
+                      __html: DOMPurify.sanitize(faq.answer),
                     }}
                   />
                   <div className="mt-2 flex gap-2 flex-wrap">
@@ -1171,7 +1172,7 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
                 <div className="border border-gray-200 rounded-lg p-4 max-h-[500px] overflow-y-auto">
                   <div
                     className="prose prose-sm max-w-none text-gray-700 prose-headings:mt-8 prose-headings:mb-4 prose-p:my-4 prose-p:leading-7 prose-li:my-1 prose-ul:my-4 prose-h2:text-lg prose-h2:border-b prose-h2:border-gray-200 prose-h2:pb-2"
-                    dangerouslySetInnerHTML={{ __html: blogHtml }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(blogHtml) }}
                   />
                 </div>
               )}
