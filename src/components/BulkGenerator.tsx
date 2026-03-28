@@ -1081,7 +1081,10 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
                   <div
                     className="text-sm text-gray-700 whitespace-pre-wrap"
                     dangerouslySetInnerHTML={{
-                      __html: DOMPurify.sanitize(faq.answer),
+                      __html: DOMPurify.sanitize(faq.answer, {
+                        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'a', 'span', 'div'],
+                        ALLOWED_ATTR: ['href', 'target', 'rel', 'class']
+                      }),
                     }}
                   />
                   <div className="mt-2 flex gap-2 flex-wrap">
@@ -1172,7 +1175,10 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
                 <div className="border border-gray-200 rounded-lg p-4 max-h-[500px] overflow-y-auto">
                   <div
                     className="prose prose-sm max-w-none text-gray-700 prose-headings:mt-8 prose-headings:mb-4 prose-p:my-4 prose-p:leading-7 prose-li:my-1 prose-ul:my-4 prose-h2:text-lg prose-h2:border-b prose-h2:border-gray-200 prose-h2:pb-2"
-                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(blogHtml) }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(blogHtml, {
+                      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'a', 'span', 'div'],
+                      ALLOWED_ATTR: ['href', 'target', 'rel', 'class']
+                    }) }}
                   />
                 </div>
               )}

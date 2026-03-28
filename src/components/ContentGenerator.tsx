@@ -539,7 +539,10 @@ export default function ContentGenerator({ profile, type }: Props) {
               {type === "blog" ? (
                 <div
                   className="prose prose-sm max-w-none prose-headings:mt-8 prose-headings:mb-4 prose-p:my-4 prose-p:leading-7 prose-li:my-1 prose-ul:my-4 prose-h2:text-lg prose-h2:border-b prose-h2:border-gray-200 prose-h2:pb-2"
-                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(result) }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(result, {
+                    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'a', 'span', 'div'],
+                    ALLOWED_ATTR: ['href', 'target', 'rel', 'class']
+                  }) }}
                 />
               ) : type === "note" ? (
                 <div className="prose prose-sm max-w-none prose-headings:mt-8 prose-headings:mb-4 prose-p:my-4 prose-p:leading-7 prose-li:my-1 prose-ul:my-4 prose-h2:text-lg prose-h2:border-b prose-h2:border-gray-200 prose-h2:pb-2 prose-blockquote:border-l-orange-400 prose-blockquote:bg-orange-50 prose-blockquote:py-1 prose-blockquote:px-4 prose-strong:text-orange-700 prose-hr:my-6">
