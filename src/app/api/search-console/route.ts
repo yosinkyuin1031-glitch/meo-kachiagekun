@@ -50,11 +50,13 @@ export async function POST(req: NextRequest) {
       if (res.status === 401) {
         return NextResponse.json({ error: "TOKEN_EXPIRED" }, { status: 401 });
       }
-      return NextResponse.json({ error: err.error?.message || "検索データ取得に失敗" }, { status: res.status });
+      console.error('Search Console error:', err.error?.message);
+      return NextResponse.json({ error: "検索データ取得に失敗しました" }, { status: res.status });
     }
 
+    interface SearchConsoleRow { keys: string[]; clicks: number; impressions: number; ctr: number; position: number; }
     const data = await res.json();
-    const queries = (data.rows || []).map((row: any) => ({
+    const queries = (data.rows || []).map((row: SearchConsoleRow) => ({
       query: row.keys[0],
       clicks: row.clicks,
       impressions: row.impressions,

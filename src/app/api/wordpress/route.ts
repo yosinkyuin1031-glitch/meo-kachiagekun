@@ -121,8 +121,7 @@ async function detectFaqEndpoint(
       // FAQ系のカスタム投稿タイプを探す（post, page, attachment以外）
       for (const [key, value] of Object.entries(types)) {
         if (key === "post" || key === "page" || key === "attachment") continue;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const typeInfo = value as any;
+          const typeInfo = value as { name?: string; description?: string; rest_base?: string; labels?: { singular_name?: string; name?: string } };
         const name = (typeInfo.name || "").toLowerCase();
         const slug = key.toLowerCase();
         const label = (typeInfo.labels?.singular_name || typeInfo.labels?.name || "").toLowerCase();

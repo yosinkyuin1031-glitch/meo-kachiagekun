@@ -29,8 +29,7 @@ export default function VoiceInput({ onResult, placeholder }: Props) {
     recognition.continuous = true;
     recognition.interimResults = true;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: { results: SpeechRecognitionResultList }) => {
       let finalText = "";
       let interimText = "";
       for (let i = 0; i < event.results.length; i++) {

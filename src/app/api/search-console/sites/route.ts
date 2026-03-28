@@ -19,11 +19,13 @@ export async function POST(req: NextRequest) {
 
     if (!res.ok) {
       const err = await res.json();
-      return NextResponse.json({ error: err.error?.message || "サイト一覧取得に失敗" }, { status: res.status });
+      console.error('Search Console sites error:', err.error?.message);
+      return NextResponse.json({ error: "サイト一覧取得に失敗しました" }, { status: res.status });
     }
 
+    interface SiteEntry { siteUrl: string; permissionLevel: string; }
     const data = await res.json();
-    const sites = (data.siteEntry || []).map((s: any) => ({
+    const sites = (data.siteEntry || []).map((s: SiteEntry) => ({
       siteUrl: s.siteUrl,
       permissionLevel: s.permissionLevel,
     }));

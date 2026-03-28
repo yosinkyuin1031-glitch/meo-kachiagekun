@@ -1,21 +1,20 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
-    const { userId } = await request.json();
-    if (!userId) {
-      return NextResponse.json({ error: "userId required" }, { status: 400 });
-    }
-
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
+    }
 
     // meo_user_settings に初期レコードを作成（既に存在する場合はスキップ）
     await supabase
       .from("meo_user_settings")
       .upsert(
         {
-          user_id: userId,
+          user_id: user.id,
           anthropic_key: "",
           serp_api_key: "",
           active_clinic_id: "",
