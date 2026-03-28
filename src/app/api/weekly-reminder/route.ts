@@ -60,7 +60,8 @@ export async function GET(request: Request) {
       .select("user_id");
 
     if (usersError) {
-      return NextResponse.json({ error: usersError.message }, { status: 500 });
+      console.error("Weekly reminder usersError:", usersError.message);
+      return NextResponse.json({ error: "ユーザー情報の取得に失敗しました" }, { status: 500 });
     }
 
     if (!users || users.length === 0) {
@@ -122,6 +123,6 @@ export async function GET(request: Request) {
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : "Unknown error";
     console.error("Weekly reminder error:", errorMsg);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    return NextResponse.json({ error: "リマインダー処理中にエラーが発生しました" }, { status: 500 });
   }
 }

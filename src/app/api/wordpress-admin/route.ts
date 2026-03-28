@@ -227,9 +227,9 @@ export async function POST(request: NextRequest) {
       postType: `${postType}-admin`,
     });
   } catch (e) {
-    const errorMsg = e instanceof Error ? e.message : "不明なエラー";
+    console.error("WordPress admin post error:", e instanceof Error ? e.message : e);
     return NextResponse.json(
-      { error: `WordPress投稿に失敗しました: ${errorMsg}` },
+      { error: "WordPress投稿に失敗しました" },
       { status: 500 }
     );
   }

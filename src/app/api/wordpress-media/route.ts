@@ -55,8 +55,9 @@ export async function POST(req: NextRequest) {
       mediaLink: data.link,
     });
   } catch (e) {
+    console.error("WordPress media upload error:", e instanceof Error ? e.message : e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "アップロード中にエラーが発生しました" },
+      { error: "アップロード中にエラーが発生しました" },
       { status: 500 }
     );
   }

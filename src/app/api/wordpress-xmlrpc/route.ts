@@ -159,9 +159,9 @@ export async function POST(request: NextRequest) {
       postType,
     });
   } catch (e) {
-    const errorMsg = e instanceof Error ? e.message : "不明なエラー";
+    console.error("WordPress XML-RPC post error:", e instanceof Error ? e.message : e);
     return NextResponse.json(
-      { error: `WordPress投稿に失敗しました: ${errorMsg}` },
+      { error: "WordPress投稿に失敗しました" },
       { status: 500 }
     );
   }
@@ -223,9 +223,9 @@ export async function PUT(request: NextRequest) {
       hasFaqPostType: hasFaq,
     });
   } catch (e) {
-    const errorMsg = e instanceof Error ? e.message : "不明なエラー";
+    console.error("WordPress XML-RPC check error:", e instanceof Error ? e.message : e);
     return NextResponse.json(
-      { error: `XML-RPC確認に失敗しました: ${errorMsg}` },
+      { error: "XML-RPC確認に失敗しました" },
       { status: 500 }
     );
   }

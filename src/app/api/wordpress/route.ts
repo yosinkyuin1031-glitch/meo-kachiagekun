@@ -679,9 +679,9 @@ export async function POST(request: NextRequest) {
       postType: "post",
     });
   } catch (e) {
-    const errorMsg = e instanceof Error ? e.message : "不明なエラー";
+    console.error("WordPress post error:", e instanceof Error ? e.message : e);
     return NextResponse.json(
-      { error: `WordPress投稿に失敗しました: ${errorMsg}` },
+      { error: "WordPress投稿に失敗しました" },
       { status: 500 }
     );
   }
@@ -801,9 +801,9 @@ export async function PUT(request: NextRequest) {
       seoPlugin: seoPluginName,
     });
   } catch (e) {
-    const errorMsg = e instanceof Error ? e.message : "不明なエラー";
+    console.error("WordPress connection test error:", e instanceof Error ? e.message : e);
     return NextResponse.json(
-      { error: `接続テストに失敗しました: ${errorMsg}` },
+      { error: "接続テストに失敗しました" },
       { status: 500 }
     );
   }
