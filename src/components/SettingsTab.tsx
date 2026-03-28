@@ -478,6 +478,8 @@ function ClinicEditForm({
   onCancel: () => void;
 }) {
   const [copiedKw, setCopiedKw] = useState<string | null>(null);
+  const [keywordError, setKeywordError] = useState("");
+  const [wpUrlError, setWpUrlError] = useState("");
   const [name, setName] = useState(clinic?.name || "");
   const [area, setArea] = useState(clinic?.area || "");
   // 複数業種チェック（後方互換: 旧categoryから移行）
@@ -547,13 +549,45 @@ function ClinicEditForm({
   } | null>(null);
   const [wpTesting, setWpTesting] = useState(false);
 
+  // キーワードバリデーション: 特殊文字のみのキーワードを拒否
+  const isValidKeyword = (kw: string): boolean => {
+    // 空文字チェック
+    if (!kw.trim()) return false;
+    // 特殊文字のみ（英数字・日本語が含まれていない）を拒否
+    const stripped = kw.replace(/[^a-zA-Z0-9\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf\uff00-\uffef]/g, "");
+    return stripped.length > 0;
+  };
+
+  // WordPress URL バリデーション
+  const isValidUrl = (url: string): boolean => {
+    if (!url.trim()) return true; // 空欄はOK（任意入力）
+    return /^https?:\/\//.test(url.trim());
+  };
+
   const handleSubmit = () => {
     if (!name.trim()) return;
 
-    const keywords = keywordsText
+    // キーワードバリデーション
+    const rawKeywords = keywordsText
       .split("\n")
       .map((k) => k.trim())
       .filter((k) => k.length > 0);
+
+    const invalidKeywords = rawKeywords.filter((k) => !isValidKeyword(k));
+    if (invalidKeywords.length > 0) {
+      setKeywordError("有効なキーワードを入力してください");
+      return;
+    }
+    setKeywordError("");
+
+    // WordPress URL バリデーション
+    if (wpSiteUrl.trim() && !isValidUrl(wpSiteUrl)) {
+      setWpUrlError("URLはhttps://から始まる形式で入力してください");
+      return;
+    }
+    setWpUrlError("");
+
+    const keywords = rawKeywords;
 
     const urls = {
       websiteUrl, bookingUrl, googleMapUrl,
@@ -588,6 +622,14 @@ function ClinicEditForm({
       return;
     }
 
+    // URL形式チェック
+    if (wpSiteUrl.trim() && !isValidUrl(wpSiteUrl)) {
+      setWpUrlError("URLはhttps://から始まる形式で入力してください");
+      setWpTestResult({ type: "error", message: "WordPress URLが正しくありません。https://を含めてください" });
+      return;
+    }
+    setWpUrlError("");
+
     // URLの正規化
     let normalizedUrl = wpSiteUrl.trim();
     if (!normalizedUrl.startsWith("http")) {
@@ -614,11 +656,18 @@ function ClinicEditForm({
       if (!res.ok) {
         let errorMsg = data.error || `接続エラー (${res.status})`;
         if (res.status === 401 || res.status === 403) {
-          errorMsg = "WordPressのユーザー名またはアプリケーションパスワードが正しくありません。パスワードはスペースを含めてそのまま入力してください。";
+          errorMsg = "ユーザー名またはアプリケーションパスワードが正しくありません";
         } else if (res.status === 404) {
-          errorMsg = "WordPressのサイトURLが正しくありません。「https://あなたのサイト.com」の形式で入力してください。";
+          errorMsg = "WordPress URLが正しくありません。https://を含めてください";
+        } else if (res.status === 502) {
+          // サイト自体に接続できない場合
+          errorMsg = "WordPress URLが正しくありません。https://を含めてください";
         } else if (res.status >= 500) {
           errorMsg = "WordPressサーバーで問題が発生しました。しばらく時間をおいてから、もう一度お試しください。";
+        }
+        // REST API無効の場合を検出
+        if (data.error && (data.error.includes("REST API") || data.error.includes("rest_api"))) {
+          errorMsg = "WordPressのREST APIが無効になっています。プラグイン設定を確認してください";
         }
         setWpTestResult({ type: "error", message: errorMsg });
       } else {
@@ -797,9 +846,14 @@ function ClinicEditForm({
             </p>
           )}
         </div>
-        <textarea value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)} rows={6}
+        <textarea value={keywordsText} onChange={(e) => { setKeywordsText(e.target.value); setKeywordError(""); }} rows={6}
           placeholder={"腰痛\n肩こり\n坐骨神経痛\n脊柱管狭窄症\n頭痛\n猫背矯正\n骨盤矯正"}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+          className={`w-full px-3 py-2 border rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500 resize-none ${
+            keywordError ? "border-red-300 bg-red-50/50" : "border-gray-200"
+          }`} />
+        {keywordError && (
+          <p className="text-xs text-red-600 mt-1 bg-red-50 px-3 py-1.5 rounded" role="alert">{keywordError}</p>
+        )}
         {/* キーワード候補 */}
         <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-xs font-medium text-blue-800 mb-2">おすすめキーワード候補（タップでコピー or 追加）</p>
@@ -985,10 +1039,15 @@ function ClinicEditForm({
             <input
               type="url"
               value={wpSiteUrl}
-              onChange={(e) => setWpSiteUrl(e.target.value)}
+              onChange={(e) => { setWpSiteUrl(e.target.value); setWpUrlError(""); }}
               placeholder="サイトURL（https://your-clinic.com）"
-              className="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 ${
+                wpUrlError ? "border-red-300 bg-red-50/50" : "border-blue-200"
+              }`}
             />
+            {wpUrlError && (
+              <p className="text-xs text-red-600 mt-1 bg-red-50 px-3 py-1.5 rounded" role="alert">{wpUrlError}</p>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <input
                 type="text"

@@ -20,14 +20,23 @@ export async function POST(request: Request) {
 
     const supabase = getSupabase();
 
+    // 重複メールアドレスチェック: Supabaseのauth.adminでは使えないためsignUpのエラーで判定
     // 1. サインアップ（メール確認はSupabase側で無効化済み）
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
     });
 
+    // Supabaseではメール確認無効時、既存ユーザーでもエラーにならずuser.identitiesが空配列になるケースがある
+    if (data?.user && data.user.identities && data.user.identities.length === 0) {
+      return NextResponse.json(
+        { error: "このメールアドレスは既に登録されています" },
+        { status: 400 }
+      );
+    }
+
     if (error) {
-      if (error?.message?.includes("already registered")) {
+      if (error?.message?.includes("already registered") || error?.message?.includes("already been registered")) {
         return NextResponse.json(
           { error: "このメールアドレスは既に登録されています" },
           { status: 400 }

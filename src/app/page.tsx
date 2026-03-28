@@ -11,6 +11,7 @@ import {
   addClinic,
   updateClinic,
   deleteClinic,
+  deleteContent,
   getRankingHistory,
 } from "@/lib/supabase-storage";
 import { RankingHistory } from "@/lib/ranking-types";
@@ -447,7 +448,7 @@ export default function Home() {
           </div>
         )}
 
-        {tab === "history" && <HistoryTab />}
+        {tab === "history" && <HistoryTab onNavigate={setTab} />}
 
         {tab === "plan" && <PlanTab />}
 
@@ -816,11 +817,12 @@ function TypeBadge({ type }: { type: string }) {
   );
 }
 
-function HistoryTab() {
+function HistoryTab({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const [items, setItems] = useState<GeneratedContent[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     getContents().then(setItems);
@@ -832,6 +834,13 @@ function HistoryTab() {
     navigator.clipboard.writeText(content);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleDeleteContent = async (id: string) => {
+    await deleteContent(id);
+    setItems((prev) => prev.filter((item) => item.id !== id));
+    setDeletingId(null);
+    setExpandedId(null);
   };
 
   return (
@@ -862,7 +871,16 @@ function HistoryTab() {
         <p className="text-xs text-gray-400 mb-3">{filtered.length}件</p>
 
         {filtered.length === 0 ? (
-          <p className="text-gray-400 text-sm text-center py-8">履歴がありません</p>
+          <div className="text-center py-10">
+            <div className="text-4xl mb-3">📝</div>
+            <p className="text-gray-500 text-sm mb-4">コンテンツを生成するとここに表示されます</p>
+            <button
+              onClick={() => onNavigate("bulk")}
+              className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              最初のコンテンツを生成する
+            </button>
+          </div>
         ) : (
           <div className="space-y-3">
             {filtered.map((item) => (
@@ -904,7 +922,30 @@ function HistoryTab() {
                           WordPress記事を見る
                         </a>
                       )}
+                      <button
+                        onClick={() => setDeletingId(item.id)}
+                        className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors ml-auto"
+                      >
+                        削除
+                      </button>
                     </div>
+                    {deletingId === item.id && (
+                      <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg mb-3 animate-in fade-in duration-200">
+                        <p className="text-sm text-red-700 flex-1">このコンテンツを削除しますか？この操作は取り消せません。</p>
+                        <button
+                          onClick={() => setDeletingId(null)}
+                          className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors border border-gray-200"
+                        >
+                          キャンセル
+                        </button>
+                        <button
+                          onClick={() => handleDeleteContent(item.id)}
+                          className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-medium hover:bg-red-600 transition-colors"
+                        >
+                          削除する
+                        </button>
+                      </div>
+                    )}
                     <div className="bg-gray-50 rounded-lg p-4 max-h-[400px] overflow-y-auto">
                       <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
                         {item.content}

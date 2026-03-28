@@ -123,8 +123,20 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
+      if (response.status === 404 || response.status === 403) {
+        return NextResponse.json(
+          { error: "WordPress URLが正しくありません。https://を含めてください" },
+          { status: response.status }
+        );
+      }
+      if (response.status === 405) {
+        return NextResponse.json(
+          { error: "WordPressのREST APIが無効になっています。プラグイン設定を確認してください" },
+          { status: 405 }
+        );
+      }
       return NextResponse.json(
-        { error: `WordPress XML-RPCエラー (${response.status})` },
+        { error: `WordPress接続エラー (${response.status}): サイトURLを確認してください` },
         { status: response.status }
       );
     }
@@ -134,10 +146,17 @@ export async function POST(request: NextRequest) {
 
     if (!result.success) {
       // 認証エラーチェック
-      if (result.fault?.includes("Incorrect username") || result.fault?.includes("403")) {
+      if (result.fault?.includes("Incorrect username") || result.fault?.includes("incorrect") || result.fault?.includes("403") || result.fault?.includes("401")) {
         return NextResponse.json(
-          { error: "WordPress認証エラー: ユーザー名またはパスワードが正しくありません。" },
+          { error: "ユーザー名またはアプリケーションパスワードが正しくありません" },
           { status: 401 }
+        );
+      }
+      // XML-RPC無効チェック
+      if (result.fault?.includes("XML-RPC") || result.fault?.includes("xmlrpc") || result.fault?.includes("disabled")) {
+        return NextResponse.json(
+          { error: "WordPressのREST APIが無効になっています。プラグイン設定を確認してください" },
+          { status: 400 }
         );
       }
       return NextResponse.json(
@@ -196,8 +215,14 @@ export async function PUT(request: NextRequest) {
     });
 
     if (!response.ok) {
+      if (response.status === 404) {
+        return NextResponse.json(
+          { error: "WordPress URLが正しくありません。https://を含めてください" },
+          { status: response.status }
+        );
+      }
       return NextResponse.json(
-        { error: `XML-RPC接続エラー (${response.status})` },
+        { error: `WordPress接続エラー (${response.status}): サイトURLを確認してください` },
         { status: response.status }
       );
     }

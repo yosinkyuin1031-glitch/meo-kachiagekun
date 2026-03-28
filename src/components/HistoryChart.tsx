@@ -125,7 +125,13 @@ export default function HistoryChart({ history, keywords }: Props) {
               formatter={(value) => (value ? `${value}位` : "圏外")}
               contentStyle={{ borderRadius: "8px", fontSize: "12px" }}
             />
-            <Legend />
+            <Legend
+              wrapperStyle={{ fontSize: "13px", lineHeight: "20px", paddingTop: "8px" }}
+              iconSize={12}
+              layout="horizontal"
+              verticalAlign="bottom"
+              align="center"
+            />
             {displayKeywords.map((kw, i) => (
               <Line
                 key={kw}

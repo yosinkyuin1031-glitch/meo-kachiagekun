@@ -206,7 +206,13 @@ export default function RankingTrendChart({ history, keywords }: Props) {
                   border: "1px solid #e5e7eb",
                 }}
               />
-              <Legend />
+              <Legend
+                wrapperStyle={{ fontSize: "13px", lineHeight: "20px", paddingTop: "8px" }}
+                iconSize={12}
+                layout="horizontal"
+                verticalAlign="bottom"
+                align="center"
+              />
               {displayKeywords.map((kw, i) => (
                 <Line
                   key={kw}

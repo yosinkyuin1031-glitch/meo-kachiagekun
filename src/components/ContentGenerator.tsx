@@ -14,6 +14,7 @@ import {
   blogSeoPrompt,
   AccumulatedContext,
 } from "@/lib/prompts";
+import VoiceInput from "./VoiceInput";
 
 interface Props {
   profile: BusinessProfile;
@@ -120,6 +121,9 @@ export default function ContentGenerator({ profile, type }: Props) {
   // 医療広告ガイドラインチェック
   const [guidelineCheck, setGuidelineCheck] = useState<GuidelineCheckResult | null>(null);
 
+  // タイムアウトメッセージ
+  const [showSlowMessage, setShowSlowMessage] = useState(false);
+
   // フィードバック評価
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackType, setFeedbackType] = useState<"good" | "needs_improvement" | null>(null);
@@ -166,11 +170,15 @@ export default function ContentGenerator({ profile, type }: Props) {
     setSeoLoading(true);
     try {
       const seoPromptText = blogSeoPrompt(profile, keyword, topic || keyword);
+      const seoController = new AbortController();
+      const seoTimeoutId = setTimeout(() => seoController.abort(), 30000); // SEOは30秒タイムアウト
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: seoPromptText, apiKey: profile.anthropicKey }),
+        signal: seoController.signal,
       });
+      clearTimeout(seoTimeoutId);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
@@ -211,14 +219,23 @@ export default function ContentGenerator({ profile, type }: Props) {
     setFeedbackType(null);
     setFeedbackComment("");
     setShowFeedbackComment(false);
+    setShowSlowMessage(false);
+
+    // 10秒後に「時間がかかっています」メッセージを表示
+    const slowTimer = setTimeout(() => setShowSlowMessage(true), 10000);
 
     try {
       const prompt = await buildPrompt();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // AI生成は60秒タイムアウト
+
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt, apiKey: profile.anthropicKey }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       const content = data.content as string;
@@ -247,7 +264,10 @@ export default function ContentGenerator({ profile, type }: Props) {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
-      if (msg.includes("API key") || msg.includes("api_key") || msg.includes("authentication")) {
+      const name = err instanceof Error ? err.name : "";
+      if (name === "AbortError" || msg.includes("aborted")) {
+        setError("処理がタイムアウトしました。時間をおいてもう一度お試しください。");
+      } else if (msg.includes("API key") || msg.includes("api_key") || msg.includes("authentication")) {
         setError("APIキーが正しくありません。設定画面でAnthropicのAPIキーを確認してください。");
       } else if (msg.includes("rate limit") || msg.includes("429")) {
         setError("AIの利用回数が上限に達しました。しばらく時間をおいてから、もう一度お試しください。");
@@ -259,6 +279,8 @@ export default function ContentGenerator({ profile, type }: Props) {
         setError("コンテンツの生成に失敗しました。もう一度お試しください。それでも解決しない場合は、設定画面でAPIキーをご確認ください。");
       }
     } finally {
+      clearTimeout(slowTimer);
+      setShowSlowMessage(false);
       setLoading(false);
     }
   }
@@ -271,6 +293,8 @@ export default function ContentGenerator({ profile, type }: Props) {
 
     try {
       const title = `${keyword} - ${topic || TYPE_LABELS[type]}`;
+      const wpController = new AbortController();
+      const wpTimeoutId = setTimeout(() => wpController.abort(), 30000);
       const wpRes = await fetch("/api/wordpress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -282,7 +306,9 @@ export default function ContentGenerator({ profile, type }: Props) {
           content: result,
           status: "draft",
         }),
+        signal: wpController.signal,
       });
+      clearTimeout(wpTimeoutId);
       const data = await wpRes.json();
       if (!wpRes.ok) throw new Error(data.error || "WordPress投稿に失敗しました");
       setWpResult({
@@ -362,13 +388,19 @@ export default function ContentGenerator({ profile, type }: Props) {
               ))}
             </div>
           )}
-          <input
-            type="text"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="キーワードを入力または上から選択"
-            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent text-sm"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="キーワードを入力または上から選択"
+              className="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent text-sm"
+            />
+            <VoiceInput
+              onResult={(text) => setKeyword((prev) => prev + text)}
+              placeholder="音声でキーワードを入力"
+            />
+          </div>
         </div>
 
         {/* Topic input (blog / note only) */}
@@ -377,13 +409,19 @@ export default function ContentGenerator({ profile, type }: Props) {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               テーマ・トピック
             </label>
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder={`例：${keyword || "腰痛"}の原因と改善方法`}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent text-sm"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                placeholder={`例：${keyword || "腰痛"}の原因と改善方法`}
+                className="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent text-sm"
+              />
+              <VoiceInput
+                onResult={(text) => setTopic((prev) => prev + text)}
+                placeholder="音声でテーマを入力"
+              />
+            </div>
           </div>
         )}
 
@@ -436,7 +474,9 @@ export default function ContentGenerator({ profile, type }: Props) {
                 AIが文章を作成しています...
               </p>
               <p className="text-gray-500 text-xs">
-                しばらくお待ちください（30秒〜1分程度）
+                {showSlowMessage
+                  ? "処理に時間がかかっています...もう少しお待ちください"
+                  : "しばらくお待ちください（30秒〜1分程度）"}
               </p>
             </div>
             <div className="flex gap-1.5 mt-2">
@@ -565,12 +605,27 @@ export default function ContentGenerator({ profile, type }: Props) {
             }`}>
               {guidelineCheck.hasViolation ? (
                 <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-yellow-600 font-bold text-sm">&#9888; 医療広告ガイドライン注意</span>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-yellow-600 font-bold text-sm">医療広告ガイドラインに引っかかる表現が見つかりました</span>
                   </div>
-                  <div className="space-y-1">
-                    {guidelineCheck.suggestions.map((s, i) => (
-                      <p key={i} className="text-xs text-yellow-800">{s}</p>
+                  <p className="text-xs text-yellow-700 mb-3">
+                    以下の表現は医療広告ガイドラインに抵触する可能性があります。右側の言い換え案を参考に修正してみてください。
+                  </p>
+                  <div className="space-y-3">
+                    {Object.entries(guidelineCheck.groupedViolations).map(([key, group]) => (
+                      <div key={key} className="bg-white/70 rounded-lg p-3">
+                        <p className="text-xs font-bold text-yellow-700 mb-1">{group.label}</p>
+                        <p className="text-[11px] text-yellow-600/80 mb-2">{group.description}</p>
+                        <div className="space-y-1.5">
+                          {group.items.map((item, i) => (
+                            <div key={i} className="flex items-center gap-2 text-xs">
+                              <span className="bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded font-medium">{item.word}</span>
+                              <span className="text-yellow-500">→</span>
+                              <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded">{item.suggestion}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -579,7 +634,7 @@ export default function ContentGenerator({ profile, type }: Props) {
                   <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span className="text-sm font-medium text-green-700">ガイドラインチェック: OK</span>
+                  <span className="text-sm font-medium text-green-700">ガイドラインチェック OK -- 問題のある表現は見つかりませんでした</span>
                 </div>
               )}
             </div>

@@ -42,7 +42,12 @@ export default function SignupPage() {
       const result = await res.json();
 
       if (!res.ok) {
-        setError(result.error || "登録に失敗しました。しばらく時間をおいてから、もう一度お試しください。");
+        // 重複メールアドレスの場合、分かりやすいメッセージを表示
+        if (result.error?.includes("既に登録")) {
+          setError("このメールアドレスは既に登録されています");
+        } else {
+          setError(result.error || "登録に失敗しました。しばらく時間をおいてから、もう一度お試しください。");
+        }
         setLoading(false);
         return;
       }

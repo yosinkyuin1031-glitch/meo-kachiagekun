@@ -910,25 +910,38 @@ export default function GuidePage() {
         document.addEventListener('touchend', handleEnd)
       }}
     >
-      {/* Progress bar */}
-      <div className="flex gap-0.5 px-4 pt-4">
-        {slides.map((_, i) => (
-          <div
-            key={i}
-            className={`h-1.5 flex-1 rounded-full transition-all ${
-              i <= current ? 'bg-white/80' : 'bg-white/20'
-            }`}
-          />
-        ))}
-      </div>
-
-      {/* Slide number */}
-      <div className="px-4 pt-3">
-        <span className="text-sm text-white/50">{current + 1} / {slides.length}</span>
+      {/* Progress bar with step labels */}
+      <div className="px-4 pt-4">
+        <div className="flex gap-0.5">
+          {slides.map((_, i) => (
+            <div
+              key={i}
+              className={`h-1.5 flex-1 rounded-full transition-all cursor-pointer ${
+                i <= current ? 'bg-white/80' : 'bg-white/20'
+              }`}
+              onClick={() => setCurrent(i)}
+            />
+          ))}
+        </div>
+        {/* Step indicator */}
+        <div className="flex items-center justify-between mt-2">
+          <span className="text-sm text-white/50">{current + 1} / {slides.length}</span>
+          <div className="flex items-center gap-2">
+            {current >= 2 && current <= 2 && (
+              <span className="text-xs bg-violet-400/30 text-violet-200 px-2 py-0.5 rounded-full">STEP 1: アカウント作成</span>
+            )}
+            {current >= 3 && current <= 6 && (
+              <span className="text-xs bg-blue-400/30 text-blue-200 px-2 py-0.5 rounded-full">STEP 2: APIキー取得</span>
+            )}
+            {current >= 7 && current <= 14 && (
+              <span className="text-xs bg-emerald-400/30 text-emerald-200 px-2 py-0.5 rounded-full">STEP 3: 院情報の入力</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Title */}
-      <div className="px-6 pt-4 pb-2">
+      <div className="px-6 pt-3 pb-2">
         <h1 className="text-3xl font-black text-white">{slide.title}</h1>
         {slide.subtitle && (
           <p className="text-base text-white/70 mt-1">{slide.subtitle}</p>
@@ -938,6 +951,16 @@ export default function GuidePage() {
       {/* Content */}
       <div className="flex-1 px-6 py-4 overflow-y-auto">
         {slide.content}
+
+        {/* 次のステップへボタン（最後のスライド以外に表示） */}
+        {current < slides.length - 1 && (
+          <button
+            onClick={goNext}
+            className="w-full mt-6 py-3.5 bg-white/20 backdrop-blur-sm text-white font-bold rounded-xl text-base hover:bg-white/30 active:scale-[0.98] transition-all border border-white/20"
+          >
+            次のステップへ →
+          </button>
+        )}
       </div>
 
       {/* Navigation */}

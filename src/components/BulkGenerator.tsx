@@ -14,6 +14,7 @@ import {
   bulkBlogSeoPrompt,
   AccumulatedContext,
 } from "@/lib/prompts";
+import VoiceInput from "./VoiceInput";
 
 interface Props {
   profile: BusinessProfile;
@@ -108,17 +109,33 @@ function GuidelineCheckDisplay({ check }: { check: GuidelineCheckResult | null }
     }`}>
       {check.hasViolation ? (
         <div>
-          <p className="text-yellow-600 font-bold text-xs mb-1">&#9888; 医療広告ガイドライン注意</p>
-          {check.suggestions.map((s, i) => (
-            <p key={i} className="text-xs text-yellow-800">{s}</p>
-          ))}
+          <p className="text-yellow-600 font-bold text-xs mb-2">医療広告ガイドラインに引っかかる表現が見つかりました</p>
+          <p className="text-[11px] text-yellow-600/80 mb-2">
+            以下の表現を修正すると安心して公開できます。右側の言い換え案を参考にしてください。
+          </p>
+          <div className="space-y-2">
+            {Object.entries(check.groupedViolations).map(([key, group]) => (
+              <div key={key} className="bg-white/70 rounded-lg p-2.5">
+                <p className="text-[11px] font-bold text-yellow-700 mb-1">{group.label}</p>
+                <div className="space-y-1">
+                  {group.items.map((item, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className="bg-yellow-200 text-yellow-800 px-1.5 py-0.5 rounded font-medium">{item.word}</span>
+                      <span className="text-yellow-500">→</span>
+                      <span className="bg-green-100 text-green-800 px-1.5 py-0.5 rounded">{item.suggestion}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="flex items-center gap-2">
           <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
-          <span className="text-xs font-medium text-green-700">ガイドラインチェック: OK</span>
+          <span className="text-xs font-medium text-green-700">ガイドラインチェック OK -- 問題なし</span>
         </div>
       )}
     </div>
@@ -346,37 +363,51 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
 
   // ---------- API helpers ----------
   const callGenerate = async (prompt: string, type: string, maxTokens?: number) => {
-    const res = await fetch("/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        apiKey: profile.anthropicKey,
-        prompt,
-        type,
-        maxTokens,
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒タイムアウト
 
-    const text = await res.text();
-    let data;
     try {
-      data = JSON.parse(text);
-    } catch {
-      throw new Error("AIからの応答を処理できませんでした。もう一度お試しください。");
-    }
-    if (!res.ok) {
-      const errMsg = data.error || "";
-      if (errMsg.includes("API key") || errMsg.includes("api_key") || errMsg.includes("authentication")) {
-        throw new Error("APIキーが正しくありません。設定画面でAnthropicのAPIキーを確認してください。");
-      } else if (errMsg.includes("rate limit") || res.status === 429) {
-        throw new Error("AIの利用回数が上限に達しました。しばらく時間をおいてから、もう一度お試しください。");
-      } else if (errMsg.includes("overloaded") || res.status === 529) {
-        throw new Error("AIサーバーが混み合っています。1〜2分後にもう一度お試しください。");
-      } else {
-        throw new Error("コンテンツの生成に失敗しました。もう一度お試しください。");
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: profile.anthropicKey,
+          prompt,
+          type,
+          maxTokens,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("AIからの応答を処理できませんでした。もう一度お試しください。");
       }
+      if (!res.ok) {
+        const errMsg = data.error || "";
+        if (errMsg.includes("API key") || errMsg.includes("api_key") || errMsg.includes("authentication")) {
+          throw new Error("APIキーが正しくありません。設定画面でAnthropicのAPIキーを確認してください。");
+        } else if (errMsg.includes("rate limit") || res.status === 429) {
+          throw new Error("AIの利用回数が上限に達しました。しばらく時間をおいてから、もう一度お試しください。");
+        } else if (errMsg.includes("overloaded") || res.status === 529) {
+          throw new Error("AIサーバーが混み合っています。1〜2分後にもう一度お試しください。");
+        } else {
+          throw new Error("コンテンツの生成に失敗しました。もう一度お試しください。");
+        }
+      }
+      return data.content as string;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err instanceof Error && (err.name === "AbortError" || err.message.includes("aborted"))) {
+        throw new Error("処理がタイムアウトしました。時間をおいてもう一度お試しください。");
+      }
+      throw err;
     }
-    return data.content as string;
   };
 
   const postToWordPress = async (
@@ -758,14 +789,20 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
                 ))}
               </select>
             ) : (
-              <input
-                type="text"
-                value={keyword}
-                onChange={(e) => { setKeyword(e.target.value); setDuplicateChecked(false); setExistingContent([]); }}
-                disabled={isRunning}
-                placeholder="例: 腰痛、肩こり、頭痛"
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={keyword}
+                  onChange={(e) => { setKeyword(e.target.value); setDuplicateChecked(false); setExistingContent([]); }}
+                  disabled={isRunning}
+                  placeholder="例: 腰痛、肩こり、頭痛"
+                  className="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100"
+                />
+                <VoiceInput
+                  onResult={(text) => { setKeyword((prev) => prev + text); setDuplicateChecked(false); setExistingContent([]); }}
+                  placeholder="音声でキーワードを入力"
+                />
+              </div>
             )}
           </div>
 
@@ -774,14 +811,20 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
             <label className="block text-sm font-medium text-gray-700 mb-1">
               テーマ・トピック（任意）
             </label>
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              disabled={isRunning}
-              placeholder="例: 腰痛の原因と改善法（未入力の場合は自動設定）"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                disabled={isRunning}
+                placeholder="例: 腰痛の原因と改善法（未入力の場合は自動設定）"
+                className="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100"
+              />
+              <VoiceInput
+                onResult={(text) => setTopic((prev) => prev + text)}
+                placeholder="音声でテーマを入力"
+              />
+            </div>
           </div>
 
           {/* FAQ生成数 */}

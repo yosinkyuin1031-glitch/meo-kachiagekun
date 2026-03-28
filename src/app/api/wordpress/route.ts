@@ -725,14 +725,14 @@ export async function PUT(request: NextRequest) {
       }
     } catch {
       return NextResponse.json(
-        { error: `WordPressサイトに接続できません。URLを確認してください: ${baseUrl}` },
+        { error: "WordPress URLが正しくありません。https://を含めてください" },
         { status: 502 }
       );
     }
 
     if (!restApiAvailable) {
       return NextResponse.json(
-        { error: `WordPress REST APIが無効です。サイトURLを確認してください: ${baseUrl}` },
+        { error: "WordPressのREST APIが無効になっています。プラグイン設定を確認してください" },
         { status: 404 }
       );
     }
@@ -764,12 +764,12 @@ export async function PUT(request: NextRequest) {
           detail = errBody.message || "";
         } catch { /* ignore */ }
         return NextResponse.json(
-          { error: `認証失敗: ユーザー名またはアプリケーションパスワードが正しくありません。${detail ? ` (${detail})` : ""}` },
+          { error: `ユーザー名またはアプリケーションパスワードが正しくありません${detail ? `（${detail}）` : ""}` },
           { status: 401 }
         );
       }
       return NextResponse.json(
-        { error: `接続エラー (${res.status}): WordPressサイトURLを確認してください。` },
+        { error: `WordPress URLが正しくありません。https://を含めてください` },
         { status: res.status }
       );
     }

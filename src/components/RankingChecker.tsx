@@ -692,6 +692,9 @@ export default function RankingChecker({ profile, onRegenerateKeyword }: Props) 
     setResults([]);
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒タイムアウト
+
       const res = await fetch("/api/check-ranking", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -701,7 +704,9 @@ export default function RankingChecker({ profile, onRegenerateKeyword }: Props) 
           keywords: profile.keywords,
           apiKey: key,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const data = await res.json();
       if (!res.ok) {
@@ -730,8 +735,12 @@ export default function RankingChecker({ profile, onRegenerateKeyword }: Props) 
       }));
       await addRankingHistory(newEntries);
       setHistory(await getRankingHistory());
-    } catch {
-      setError("インターネット接続を確認して、もう一度お試しください。");
+    } catch (err) {
+      if (err instanceof Error && (err.name === "AbortError" || err.message.includes("aborted"))) {
+        setError("処理がタイムアウトしました。キーワード数を減らすか、時間をおいてもう一度お試しください。");
+      } else {
+        setError("インターネット接続を確認して、もう一度お試しください。");
+      }
     } finally {
       setChecking(false);
     }

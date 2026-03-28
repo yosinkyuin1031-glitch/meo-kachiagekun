@@ -289,6 +289,15 @@ export async function updateContent(id: string, updates: Partial<GeneratedConten
     .eq("user_id", userId);
 }
 
+export async function deleteContent(id: string): Promise<void> {
+  const userId = await getUserId();
+  await supabase()
+    .from("meo_contents")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+}
+
 // ─── キーワード別の既存コンテンツチェック ─────
 export async function getContentsByKeyword(keyword: string): Promise<GeneratedContent[]> {
   try {
