@@ -113,6 +113,21 @@ CREATE TABLE IF NOT EXISTS meo_checklists (
   UNIQUE(user_id, clinic_id)
 );
 
+-- 9. サブスクリプション（Stripe連携）
+CREATE TABLE IF NOT EXISTS meo_subscriptions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  stripe_customer_id TEXT NOT NULL,
+  stripe_subscription_id TEXT,
+  status TEXT NOT NULL DEFAULT 'inactive',
+  current_period_end TIMESTAMPTZ,
+  cancel_at_period_end BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id),
+  UNIQUE(stripe_customer_id)
+);
+
 -- ── RLS（行レベルセキュリティ）────────────────────
 
 ALTER TABLE meo_user_settings ENABLE ROW LEVEL SECURITY;
@@ -123,6 +138,13 @@ ALTER TABLE meo_ranking_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meo_search_console_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meo_gbp_images ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meo_checklists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE meo_subscriptions ENABLE ROW LEVEL SECURITY;
+
+-- meo_subscriptions は SELECT のみユーザー許可（INSERT/UPDATE は service_role のみ）
+CREATE POLICY "meo_subscriptions_select" ON meo_subscriptions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "meo_subscriptions_service_all" ON meo_subscriptions
+  FOR ALL USING (true) WITH CHECK (true);
 
 -- 各テーブルに SELECT/INSERT/UPDATE/DELETE ポリシー
 DO $$
@@ -166,6 +188,8 @@ CREATE INDEX IF NOT EXISTS idx_meo_ranking_user ON meo_ranking_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_meo_ranking_keyword ON meo_ranking_history(user_id, keyword);
 CREATE INDEX IF NOT EXISTS idx_meo_gbp_images_user ON meo_gbp_images(user_id);
 CREATE INDEX IF NOT EXISTS idx_meo_checklists_user ON meo_checklists(user_id, clinic_id);
+CREATE INDEX IF NOT EXISTS idx_meo_subscriptions_user ON meo_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_meo_subscriptions_stripe ON meo_subscriptions(stripe_customer_id);
 
 -- ── Storage バケット ───────────────────────────
 INSERT INTO storage.buckets (id, name, public)

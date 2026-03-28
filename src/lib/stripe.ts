@@ -32,11 +32,15 @@ export const stripe = new Proxy({} as Stripe, {
 
 /**
  * Stripe Price ID（月額1,980円）
- * Stripeダッシュボードで商品・価格を作成後、ここにPrice IDを設定してください。
- * テスト環境: price_test_xxxxxx
- * 本番環境: price_live_xxxxxx
+ * Vercel環境変数 STRIPE_PRICE_ID に設定してください。
  */
-export const PRICE_ID = process.env.STRIPE_PRICE_ID || "price_PLACEHOLDER";
+export function getPriceId(): string {
+  const priceId = process.env.STRIPE_PRICE_ID;
+  if (!priceId || priceId === "price_PLACEHOLDER") {
+    throw new Error("STRIPE_PRICE_ID is not set");
+  }
+  return priceId;
+}
 
 /**
  * アプリURL

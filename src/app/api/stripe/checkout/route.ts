@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { stripe, PRICE_ID, APP_URL } from "@/lib/stripe";
+import { stripe, getPriceId, APP_URL } from "@/lib/stripe";
 
 export async function POST() {
   try {
@@ -47,7 +47,7 @@ export async function POST() {
       mode: "subscription",
       line_items: [
         {
-          price: PRICE_ID,
+          price: getPriceId(),
           quantity: 1,
         },
       ],
