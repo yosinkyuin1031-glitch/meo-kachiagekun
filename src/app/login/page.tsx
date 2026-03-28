@@ -61,16 +61,27 @@ export default function LoginPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* ロゴ */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
             <span className="text-white text-3xl font-black">M</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-800">MEO勝ち上げくん</h1>
-          <p className="text-sm text-gray-500 mt-1">ログインしてください</p>
+          <p className="text-xs text-gray-400 mt-1">by ClinicApps</p>
         </div>
+
+        {/* デモ体験ボタン（目立つ位置） */}
+        <button
+          type="button"
+          onClick={handleDemoLogin}
+          disabled={demoLoading}
+          className="w-full py-3.5 text-white font-bold rounded-2xl disabled:opacity-50 transition-all text-sm mb-4 shadow-lg"
+          style={{ background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)' }}
+        >
+          {demoLoading ? "デモログイン中..." : "無料でデモ体験する"}
+        </button>
 
         {/* フォーム */}
         <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 space-y-5">
@@ -102,6 +113,11 @@ export default function LoginPage() {
               autoComplete="current-password"
               className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+            <div className="text-right mt-1">
+              <a href="/forgot-password" className="text-xs text-gray-400 hover:text-blue-600 transition-colors">
+                パスワードを忘れた方
+              </a>
+            </div>
           </div>
 
           {error && (
@@ -125,25 +141,14 @@ export default function LoginPage() {
               新規登録
             </a>
           </p>
-
-          <div style={{ borderTop: '1px solid #e5e7eb', marginTop: '24px', paddingTop: '24px', textAlign: 'center' }}>
-            <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '12px' }}>デモ体験はこちら</p>
-            <button
-              type="button"
-              onClick={handleDemoLogin}
-              disabled={demoLoading}
-              className="w-full py-3 text-white font-semibold rounded-xl disabled:opacity-50 transition-all text-sm"
-              style={{ backgroundColor: '#0ea5e9' }}
-            >
-              {demoLoading ? "デモログイン中..." : "デモアカウントでログイン"}
-            </button>
-          </div>
         </form>
 
         <div className="text-center mt-4 space-x-4">
           <a href="/terms" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">利用規約</a>
           <a href="/privacy" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">プライバシーポリシー</a>
         </div>
+
+        <p className="text-center text-gray-400 text-[10px] mt-4">&copy; ClinicApps</p>
       </div>
     </div>
   );
