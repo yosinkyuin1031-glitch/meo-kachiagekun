@@ -140,11 +140,14 @@ ALTER TABLE meo_gbp_images ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meo_checklists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meo_subscriptions ENABLE ROW LEVEL SECURITY;
 
--- meo_subscriptions は SELECT のみユーザー許可（INSERT/UPDATE は service_role のみ）
-CREATE POLICY "meo_subscriptions_select" ON meo_subscriptions
-  FOR SELECT USING (auth.uid() = user_id);
+-- meo_subscriptions: ユーザーは自分のレコードのみ参照可能
+DROP POLICY IF EXISTS "meo_subscriptions_service_all" ON meo_subscriptions;
+CREATE POLICY "meo_subscriptions_user_select" ON meo_subscriptions
+  FOR SELECT USING (user_id = auth.uid());
+
+-- meo_subscriptions: サービスロール（Webhook用）は全行操作可能
 CREATE POLICY "meo_subscriptions_service_all" ON meo_subscriptions
-  FOR ALL USING (true) WITH CHECK (true);
+  FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 
 -- 各テーブルに SELECT/INSERT/UPDATE/DELETE ポリシー
 DO $$
