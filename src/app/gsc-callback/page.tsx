@@ -59,8 +59,14 @@ function CallbackContent() {
 export default function GscCallbackPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">読み込み中...</p>
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full mx-4">
+          <div className="animate-pulse space-y-4">
+            <div className="w-16 h-16 bg-amber-100 rounded-full mx-auto" />
+            <div className="h-5 w-32 bg-gray-200 rounded mx-auto" />
+            <div className="h-4 w-48 bg-gray-100 rounded mx-auto" />
+          </div>
+        </div>
       </div>
     }>
       <CallbackContent />

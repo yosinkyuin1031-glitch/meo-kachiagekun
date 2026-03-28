@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/Toast";
 
 // モニター期間終了日（2026年7月1日 00:00 JST）
 const MONITOR_PERIOD_END = new Date("2026-07-01T00:00:00+09:00");
@@ -27,6 +28,7 @@ function getMonitorDaysRemaining(): number {
 
 export default function PlanTab() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -56,10 +58,10 @@ export default function PlanTab() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert("エラーが発生しました: " + (data.error || "不明なエラー"));
+        showToast(data.error || "決済ページの読み込みに失敗しました。しばらくしてからもう一度お試しください。", "error");
       }
     } catch {
-      alert("通信エラーが発生しました");
+      showToast("通信エラーが発生しました。インターネット接続を確認してください。", "error");
     } finally {
       setActionLoading(false);
     }
@@ -73,10 +75,10 @@ export default function PlanTab() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert("エラーが発生しました: " + (data.error || "不明なエラー"));
+        showToast(data.error || "プラン管理ページの読み込みに失敗しました。しばらくしてからもう一度お試しください。", "error");
       }
     } catch {
-      alert("通信エラーが発生しました");
+      showToast("通信エラーが発生しました。インターネット接続を確認してください。", "error");
     } finally {
       setActionLoading(false);
     }
@@ -90,8 +92,20 @@ export default function PlanTab() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+      <div className="space-y-6 animate-pulse">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-6 py-5 border-b border-gray-100">
+            <div className="h-5 w-24 bg-gray-200 rounded" />
+            <div className="h-4 w-48 bg-gray-100 rounded mt-2" />
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="rounded-xl p-5 bg-gray-50 border-2 border-gray-200">
+              <div className="h-5 w-32 bg-gray-200 rounded mb-2" />
+              <div className="h-6 w-48 bg-gray-200 rounded" />
+            </div>
+            <div className="h-12 bg-gray-100 rounded-xl" />
+          </div>
+        </div>
       </div>
     );
   }

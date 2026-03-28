@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { ClinicProfile, WordPressSettings, NoteProfile } from "@/lib/types";
 import { getSerpApiKey, saveSerpApiKey, getClinics, getContents, getRankingHistory, getChecklist } from "@/lib/supabase-storage";
 import { ConfirmDialog, useConfirmDialog } from "./ConfirmDialog";
+import { useToast } from "./Toast";
 
 interface Props {
   clinics: ClinicProfile[];
@@ -26,6 +27,7 @@ export default function SettingsTab({
   onSwitchClinic,
   onSaveApiKey,
 }: Props) {
+  const { showToast } = useToast();
   const [apiKey, setApiKey] = useState(anthropicKey);
   const [showKey, setShowKey] = useState(false);
   const [keyStatus, setKeyStatus] = useState<"idle" | "testing" | "valid" | "invalid" | "saved">("idle");
@@ -89,7 +91,7 @@ export default function SettingsTab({
       setTimeout(() => setExportDone(false), 3000);
     } catch (err) {
       console.error("エクスポートエラー:", err);
-      alert("データのエクスポートに失敗しました。もう一度お試しください。");
+      showToast("データのエクスポートに失敗しました。もう一度お試しください。", "error");
     } finally {
       setExporting(false);
     }

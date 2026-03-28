@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { RankingHistory } from "@/lib/ranking-types";
 import { GeneratedContent, BusinessProfile } from "@/lib/types";
+import { useToast } from "./Toast";
 
 interface Props {
   profile: BusinessProfile;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function ReportPdfExport({ profile, history, contents }: Props) {
+  const { showToast } = useToast();
   const [generating, setGenerating] = useState(false);
   const [period, setPeriod] = useState<"month" | "quarter">("month");
 
@@ -370,7 +372,7 @@ export default function ReportPdfExport({ profile, history, contents }: Props) {
       doc.save(fileName);
     } catch (error) {
       console.error("PDF generation error:", error);
-      alert("PDF生成に失敗しました。もう一度お試しください。");
+      showToast("PDF生成に失敗しました。もう一度お試しください。", "error");
     } finally {
       setGenerating(false);
     }

@@ -154,10 +154,64 @@ export default function Home() {
 
   if (authLoading || dataLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-500 text-sm">読み込み中...</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white">
+        {/* Skeleton header */}
+        <div className="bg-gradient-to-r from-slate-800 via-slate-700 to-blue-800 shadow-lg border-b border-slate-600/20">
+          <div className="max-w-5xl mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-500/20 rounded-xl animate-pulse" />
+                <div>
+                  <div className="h-6 w-40 bg-white/10 rounded animate-pulse" />
+                  <div className="h-3 w-56 bg-white/5 rounded animate-pulse mt-1.5" />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-32 bg-white/10 rounded-lg animate-pulse" />
+                <div className="h-8 w-20 bg-white/10 rounded-lg animate-pulse" />
+              </div>
+            </div>
+          </div>
+        </div>
+        {/* Skeleton tabs */}
+        <div className="max-w-5xl mx-auto px-4 pt-4 hidden md:block">
+          <div className="flex gap-1 bg-white rounded-xl p-1.5 shadow-sm border border-gray-100">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="h-10 flex-1 bg-gray-100 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        </div>
+        {/* Skeleton content cards */}
+        <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+          <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-xl bg-gray-200 animate-pulse" />
+              <div className="flex-1 space-y-2">
+                <div className="h-5 w-48 bg-gray-200 rounded animate-pulse" />
+                <div className="h-4 w-64 bg-gray-100 rounded animate-pulse" />
+                <div className="flex gap-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-5 w-16 bg-gray-100 rounded-full animate-pulse" />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="bg-gray-50 rounded-xl p-4 border border-gray-100 animate-pulse">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 bg-gray-200 rounded" />
+                  <div className="w-8 h-8 bg-gray-200 rounded" />
+                </div>
+                <div className="h-3 w-16 bg-gray-200 rounded" />
+              </div>
+            ))}
+          </div>
+          <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 space-y-4">
+            <div className="h-5 w-40 bg-gray-200 rounded animate-pulse" />
+            <div className="h-48 bg-gray-100 rounded-lg animate-pulse" />
+          </div>
         </div>
       </div>
     );
@@ -193,6 +247,8 @@ export default function Home() {
                   <button
                     onClick={() => setShowClinicSwitcher(!showClinicSwitcher)}
                     className="flex items-center gap-2 px-3 py-2 bg-white/10 backdrop-blur-sm border border-white/15 rounded-lg hover:bg-white/20 transition-colors"
+                    aria-label="院を切り替え"
+                    aria-expanded={showClinicSwitcher}
                   >
                     <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold">
                       {activeClinic?.name?.charAt(0) || "?"}
@@ -269,6 +325,7 @@ export default function Home() {
               <button
                 onClick={signOut}
                 className="px-3 py-2 text-xs text-blue-200/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                aria-label="ログアウト"
               >
                 ログアウト
               </button>
@@ -284,26 +341,29 @@ export default function Home() {
 
       {/* タブ（PC版：md以上で表示） */}
       <div className="max-w-5xl mx-auto px-4 pt-4 hidden md:block">
-        <div className="flex gap-1 bg-white rounded-xl p-1.5 shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide" style={{ WebkitOverflowScrolling: "touch" }}>
+        <nav aria-label="メインナビゲーション" className="flex gap-1 bg-white rounded-xl p-1.5 shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide" style={{ WebkitOverflowScrolling: "touch" }} role="tablist">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
+              role="tab"
+              aria-selected={tab === t.key}
+              aria-label={`${t.label}タブ`}
               className={`flex items-center gap-1.5 py-2.5 px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
                 tab === t.key
                   ? "bg-blue-600 text-white shadow-sm"
                   : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
               }`}
             >
-              <span className="text-base">{t.icon}</span>
+              <span className="text-base" aria-hidden="true">{t.icon}</span>
               <span>{t.label}</span>
             </button>
           ))}
-        </div>
+        </nav>
       </div>
 
       {/* コンテンツ */}
-      <main className="max-w-5xl mx-auto px-4 py-6 pb-24 md:pb-6">
+      <main className="max-w-5xl mx-auto px-4 py-6 pb-24 md:pb-6" role="main" aria-label="メインコンテンツ">
         {tab === "dashboard" && (
           <div className="space-y-8">
             <DashboardTab
@@ -387,19 +447,22 @@ export default function Home() {
       </main>
 
       {/* モバイル用ボトムナビゲーション（md未満で表示） */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] md:hidden">
-        <div className="grid grid-cols-7 h-[68px]">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] md:hidden" aria-label="モバイルナビゲーション">
+        <div className="grid grid-cols-7 h-[68px]" role="tablist">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
+              role="tab"
+              aria-selected={tab === t.key}
+              aria-label={`${t.label}タブ`}
               className={`flex flex-col items-center justify-center gap-0.5 transition-colors ${
                 tab === t.key
                   ? "text-blue-600"
                   : "text-gray-400"
               }`}
             >
-              <span className={`text-xl leading-none ${tab === t.key ? "scale-110" : ""} transition-transform`}>{t.icon}</span>
+              <span className={`text-xl leading-none ${tab === t.key ? "scale-110" : ""} transition-transform`} aria-hidden="true">{t.icon}</span>
               <span className={`text-[10px] font-medium leading-tight ${
                 tab === t.key ? "text-blue-600" : "text-gray-400"
               }`}>{t.label}</span>

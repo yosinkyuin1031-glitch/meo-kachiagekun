@@ -75,25 +75,31 @@ export default function LoginPage() {
         {/* フォーム */}
         <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
+            <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
             <input
+              id="login-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="example@email.com"
+              aria-label="メールアドレス"
+              autoComplete="email"
               className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">パスワード</label>
+            <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 mb-1">パスワード</label>
             <input
+              id="login-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               placeholder="パスワード"
+              aria-label="パスワード"
+              autoComplete="current-password"
               className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
@@ -107,6 +113,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
+            aria-label={loading ? "ログイン処理中" : "ログイン"}
             className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold rounded-xl hover:from-blue-700 hover:to-blue-600 disabled:opacity-50 transition-all shadow-lg text-sm"
           >
             {loading ? "ログイン中..." : "ログイン"}

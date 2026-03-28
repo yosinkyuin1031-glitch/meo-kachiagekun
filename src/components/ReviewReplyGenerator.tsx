@@ -114,6 +114,8 @@ export default function ReviewReplyGenerator({ profile }: Props) {
                 key={star}
                 onClick={() => setStarRating(star)}
                 className="text-3xl transition-transform hover:scale-110 focus:outline-none"
+                aria-label={`${star}つ星`}
+                aria-pressed={star <= starRating}
               >
                 {star <= starRating ? "★" : "☆"}
               </button>

@@ -10,7 +10,11 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  const [touched, setTouched] = useState<{ password: boolean; confirmPassword: boolean }>({ password: false, confirmPassword: false });
   const supabase = createClient();
+
+  const passwordTooShort = touched.password && password.length > 0 && password.length < 6;
+  const passwordMismatch = touched.confirmPassword && confirmPassword.length > 0 && password !== confirmPassword;
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,39 +79,62 @@ export default function SignupPage() {
 
         <form onSubmit={handleSignup} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
+            <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
             <input
+              id="signup-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="example@email.com"
+              aria-label="メールアドレス"
+              autoComplete="email"
               className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">パスワード（6文字以上）</label>
+            <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700 mb-1">パスワード（6文字以上）</label>
             <input
+              id="signup-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onBlur={() => setTouched((p) => ({ ...p, password: true }))}
               required
               placeholder="パスワード"
-              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              aria-label="パスワード"
+              aria-invalid={passwordTooShort}
+              autoComplete="new-password"
+              className={`w-full px-4 py-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                passwordTooShort ? "border-red-300 bg-red-50/50" : "border-gray-200"
+              }`}
             />
+            {passwordTooShort && (
+              <p className="text-xs text-red-600 mt-1" role="alert">パスワードは6文字以上で入力してください</p>
+            )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">パスワード確認</label>
+            <label htmlFor="signup-confirm-password" className="block text-sm font-medium text-gray-700 mb-1">パスワード確認</label>
             <input
+              id="signup-confirm-password"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              onBlur={() => setTouched((p) => ({ ...p, confirmPassword: true }))}
               required
               placeholder="パスワード（再入力）"
-              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              aria-label="パスワード確認"
+              aria-invalid={passwordMismatch}
+              autoComplete="new-password"
+              className={`w-full px-4 py-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                passwordMismatch ? "border-red-300 bg-red-50/50" : "border-gray-200"
+              }`}
             />
+            {passwordMismatch && (
+              <p className="text-xs text-red-600 mt-1" role="alert">パスワードが一致しません</p>
+            )}
           </div>
 
           <div className="flex items-start gap-2">
@@ -135,6 +162,7 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={loading || !agreed}
+            aria-label={loading ? "登録処理中" : "アカウントを作成"}
             className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold rounded-xl hover:from-blue-700 hover:to-blue-600 disabled:opacity-50 transition-all shadow-lg text-sm"
           >
             {loading ? "登録中..." : "アカウントを作成"}

@@ -69,6 +69,18 @@
   .rank-same { color: #6b7280; }
 }
 
+/* Toast slide-in animation */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 /* モバイルボトムナビゲーション用 */
 .bottom-nav-spacer {
   height: 72px;

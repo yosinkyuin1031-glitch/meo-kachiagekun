@@ -127,6 +127,11 @@ export default function ChecklistTab() {
           <div
             key={item.id}
             onClick={() => toggleItem(item.id)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleItem(item.id); } }}
+            role="checkbox"
+            aria-checked={item.completed}
+            aria-label={`${item.title}${item.completed ? "（完了）" : ""}`}
+            tabIndex={0}
             className={`bg-white rounded-lg p-4 shadow-sm cursor-pointer transition-all hover:shadow ${
               item.completed ? "opacity-60" : ""
             }`}

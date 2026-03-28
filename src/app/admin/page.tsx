@@ -91,10 +91,35 @@ export default function AdminPage() {
 
   if (authLoading || checking) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-500 text-sm">認証確認中...</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white">
+        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-red-900 shadow-lg border-b border-slate-600/20">
+          <div className="max-w-6xl mx-auto px-4 py-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-red-500/20 rounded-xl animate-pulse" />
+              <div>
+                <div className="h-5 w-24 bg-white/10 rounded animate-pulse" />
+                <div className="h-3 w-40 bg-white/5 rounded animate-pulse mt-1" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-6xl mx-auto px-4 py-8 space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 animate-pulse">
+                <div className="h-4 w-20 bg-gray-200 rounded mb-3" />
+                <div className="h-8 w-16 bg-gray-200 rounded" />
+              </div>
+            ))}
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 animate-pulse">
+            <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-10 bg-gray-100 rounded" />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -183,9 +208,10 @@ export default function AdminPage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
           <h2 className="text-lg font-bold text-gray-800 mb-4">アカウント情報</h2>
           {dataLoading ? (
-            <div className="text-center py-8">
-              <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-gray-400 text-sm">読み込み中...</p>
+            <div className="py-4 space-y-3 animate-pulse">
+              <div className="h-8 bg-gray-100 rounded w-full" />
+              <div className="h-12 bg-gray-50 rounded w-full" />
+              <div className="h-12 bg-gray-50 rounded w-full" />
             </div>
           ) : (
             <div className="overflow-x-auto">
