@@ -362,6 +362,25 @@ export default function Home() {
         </nav>
       </div>
 
+      {/* クリニック未登録時のガイドメッセージ */}
+      {clinics.length === 0 && tab !== "settings" && (
+        <div className="max-w-5xl mx-auto px-4 pt-6">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
+            <div className="text-3xl mb-3">🏥</div>
+            <h3 className="text-base font-bold text-amber-800 mb-2">診療所情報が未登録です</h3>
+            <p className="text-sm text-amber-700 mb-4">
+              まず診療所情報を登録してください。院名・エリア・キーワードを設定すると、コンテンツ生成や順位チェックが使えるようになります。
+            </p>
+            <button
+              onClick={() => setTab("settings")}
+              className="px-6 py-2.5 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition-colors"
+            >
+              設定画面で登録する
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* コンテンツ */}
       <main className="max-w-5xl mx-auto px-4 py-6 pb-24 md:pb-6" role="main" aria-label="メインコンテンツ">
         {tab === "dashboard" && (

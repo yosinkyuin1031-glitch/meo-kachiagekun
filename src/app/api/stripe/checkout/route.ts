@@ -60,9 +60,9 @@ export async function POST() {
 
     return NextResponse.json({ url: session.url });
   } catch (error) {
-    console.error("Stripe Checkout error:", error);
+    console.error("Stripe Checkout error:", error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { error: "Checkout Sessionの作成に失敗しました" },
+      { error: "決済ページの作成に失敗しました。しばらくしてから再度お試しください。" },
       { status: 500 }
     );
   }

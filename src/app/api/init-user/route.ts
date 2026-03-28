@@ -24,7 +24,8 @@ export async function POST(request: Request) {
       );
 
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  } catch (e) {
+    console.error("Init user error:", e instanceof Error ? e.message : e);
+    return NextResponse.json({ error: "ユーザー初期化に失敗しました。しばらくしてから再度お試しください。" }, { status: 500 });
   }
 }

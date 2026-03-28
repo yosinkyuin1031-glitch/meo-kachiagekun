@@ -149,6 +149,11 @@ CREATE POLICY "meo_subscriptions_user_select" ON meo_subscriptions
 CREATE POLICY "meo_subscriptions_service_all" ON meo_subscriptions
   FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 
+-- meo_user_settings: サービスロール（init-user API等）は全行操作可能
+DROP POLICY IF EXISTS "meo_user_settings_service_all" ON meo_user_settings;
+CREATE POLICY "meo_user_settings_service_all" ON meo_user_settings
+  FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
+
 -- 各テーブルに SELECT/INSERT/UPDATE/DELETE ポリシー
 DO $$
 DECLARE

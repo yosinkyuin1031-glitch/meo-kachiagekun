@@ -138,15 +138,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    console.error("全モデル生成失敗:", lastError?.message);
     return NextResponse.json(
-      { error: `生成に失敗しました: ${lastError?.message || "不明なエラー"}` },
+      { error: "コンテンツの生成に失敗しました。しばらくしてから再度お試しください。" },
       { status: 500 }
     );
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : "不明なエラー";
     console.error("Generate API error:", errorMsg);
     return NextResponse.json(
-      { error: `エラー: ${errorMsg}` },
+      { error: "コンテンツの生成に失敗しました。しばらくしてから再度お試しください。" },
       { status: 500 }
     );
   }
@@ -193,8 +194,9 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ valid: false, error: "利用可能なモデルがありません" }, { status: 500 });
   } catch (e) {
+    console.error("API Key test error:", e instanceof Error ? e.message : e);
     return NextResponse.json(
-      { valid: false, error: e instanceof Error ? e.message : "不明なエラー" },
+      { valid: false, error: "接続テストに失敗しました。しばらくしてから再度お試しください。" },
       { status: 500 }
     );
   }

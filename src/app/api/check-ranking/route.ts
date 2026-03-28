@@ -186,9 +186,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ results });
-  } catch {
+  } catch (e) {
+    console.error("Ranking check error:", e instanceof Error ? e.message : e);
     return NextResponse.json(
-      { error: "ランキングチェックに失敗しました" },
+      { error: "ランキングチェックに失敗しました。入力内容を確認のうえ、しばらくしてから再度お試しください。" },
       { status: 500 }
     );
   }
