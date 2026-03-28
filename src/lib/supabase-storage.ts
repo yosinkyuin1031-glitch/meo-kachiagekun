@@ -116,7 +116,7 @@ export async function saveClinics(clinics: ClinicProfile[]): Promise<void> {
 
 export async function addClinic(clinic: ClinicProfile): Promise<void> {
   const userId = await getUserId();
-  await supabase().from("meo_clinics").insert({
+  const { error } = await supabase().from("meo_clinics").insert({
     id: clinic.id,
     user_id: userId,
     name: clinic.name,
@@ -136,6 +136,10 @@ export async function addClinic(clinic: ClinicProfile): Promise<void> {
     nearest_station: clinic.nearestStation || "",
     coverage_areas: clinic.coverageAreas || [],
   });
+  if (error) {
+    console.error("院の追加に失敗:", error);
+    throw new Error("院の追加に失敗しました");
+  }
 }
 
 export async function updateClinic(id: string, updates: Partial<ClinicProfile>): Promise<void> {
@@ -158,11 +162,16 @@ export async function updateClinic(id: string, updates: Partial<ClinicProfile>):
   if (updates.nearestStation !== undefined) dbUpdates.nearest_station = updates.nearestStation;
   if (updates.coverageAreas !== undefined) dbUpdates.coverage_areas = updates.coverageAreas;
 
-  await supabase()
+  const { error } = await supabase()
     .from("meo_clinics")
     .update(dbUpdates)
     .eq("id", id)
     .eq("user_id", userId);
+
+  if (error) {
+    console.error("院情報の更新に失敗:", error);
+    throw new Error("院情報の保存に失敗しました");
+  }
 }
 
 export async function deleteClinic(id: string): Promise<void> {

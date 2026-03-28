@@ -10,11 +10,11 @@ interface Props {
   clinics: ClinicProfile[];
   activeClinicId: string;
   anthropicKey: string;
-  onAddClinic: (clinic: ClinicProfile) => void;
-  onUpdateClinic: (id: string, updates: Partial<ClinicProfile>) => void;
-  onDeleteClinic: (id: string) => void;
-  onSwitchClinic: (id: string) => void;
-  onSaveApiKey: (key: string) => void;
+  onAddClinic: (clinic: ClinicProfile) => Promise<void> | void;
+  onUpdateClinic: (id: string, updates: Partial<ClinicProfile>) => Promise<void> | void;
+  onDeleteClinic: (id: string) => Promise<void> | void;
+  onSwitchClinic: (id: string) => Promise<void> | void;
+  onSaveApiKey: (key: string) => Promise<void> | void;
 }
 
 export default function SettingsTab({
@@ -277,9 +277,14 @@ export default function SettingsTab({
               {editingId === clinic.id ? (
                 <ClinicEditForm
                   clinic={clinic}
-                  onSave={(updates) => {
-                    onUpdateClinic(clinic.id, updates);
-                    setEditingId(null);
+                  onSave={async (updates) => {
+                    try {
+                      await onUpdateClinic(clinic.id, updates);
+                      setEditingId(null);
+                      showToast("院情報を保存しました", "success");
+                    } catch {
+                      showToast("保存に失敗しました。もう一度お試しください。", "error");
+                    }
                   }}
                   onCancel={() => setEditingId(null)}
                 />
@@ -365,7 +370,7 @@ export default function SettingsTab({
           <div className="mt-4">
             <ClinicEditForm
               clinic={null}
-              onSave={(data) => {
+              onSave={async (data) => {
                 const newClinic: ClinicProfile = {
                   id: `clinic-${Date.now()}`,
                   name: data.name || "",
@@ -384,8 +389,13 @@ export default function SettingsTab({
                   experience: data.experience,
                   reviews: data.reviews,
                 };
-                onAddClinic(newClinic);
-                setShowAddForm(false);
+                try {
+                  await onAddClinic(newClinic);
+                  setShowAddForm(false);
+                  showToast("院を追加しました", "success");
+                } catch {
+                  showToast("院の追加に失敗しました。もう一度お試しください。", "error");
+                }
               }}
               onCancel={() => setShowAddForm(false)}
             />
@@ -474,12 +484,13 @@ function ClinicEditForm({
   onCancel,
 }: {
   clinic: ClinicProfile | null;
-  onSave: (data: Partial<ClinicProfile>) => void;
+  onSave: (data: Partial<ClinicProfile>) => Promise<void> | void;
   onCancel: () => void;
 }) {
   const [copiedKw, setCopiedKw] = useState<string | null>(null);
   const [keywordError, setKeywordError] = useState("");
   const [wpUrlError, setWpUrlError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [name, setName] = useState(clinic?.name || "");
   const [area, setArea] = useState(clinic?.area || "");
   // 複数業種チェック（後方互換: 旧categoryから移行）
@@ -564,7 +575,17 @@ function ClinicEditForm({
     return /^https?:\/\//.test(url.trim());
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    try {
+      await handleSubmitInner();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSubmitInner = async () => {
     if (!name.trim()) return;
 
     // キーワードバリデーション
@@ -613,7 +634,7 @@ function ClinicEditForm({
     const categories = selectedCategories.length > 0 ? selectedCategories : ["整体院"];
     const category = categories.join("・");
 
-    onSave({ name, area, nearestStation: nearestStation || undefined, coverageAreas: coverageAreasText ? coverageAreasText.split(",").map(a => a.trim()).filter(Boolean) : undefined, category, categories, description, ownerName, specialty, keywords, urls, wordpress, noteProfile, strengths: strengths || undefined, experience: experience || undefined, reviews: reviews || undefined });
+    await onSave({ name, area, nearestStation: nearestStation || undefined, coverageAreas: coverageAreasText ? coverageAreasText.split(",").map(a => a.trim()).filter(Boolean) : undefined, category, categories, description, ownerName, specialty, keywords, urls, wordpress, noteProfile, strengths: strengths || undefined, experience: experience || undefined, reviews: reviews || undefined });
   };
 
   const testWordPress = async () => {
@@ -1119,10 +1140,10 @@ function ClinicEditForm({
       <div className="flex gap-2 pt-2">
         <button
           onClick={handleSubmit}
-          disabled={!name.trim()}
+          disabled={!name.trim() || saving}
           className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
         >
-          {clinic ? "更新" : "追加"}
+          {saving ? "保存中..." : clinic ? "更新" : "追加"}
         </button>
         <button
           onClick={onCancel}
