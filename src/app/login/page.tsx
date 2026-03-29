@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -8,7 +8,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [demoLoading, setDemoLoading] = useState(false);
   const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -34,31 +33,6 @@ export default function LoginPage() {
     window.location.href = "/";
   };
 
-  const handleDemoLogin = async () => {
-    setDemoLoading(true);
-    setError("");
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email: "demo@clinicapps.jp",
-      password: "demo1234",
-    });
-
-    if (error) {
-      setError("デモアカウントへのログインに失敗しました。しばらくしてからお試しください。");
-      setDemoLoading(false);
-      return;
-    }
-
-    window.location.href = "/";
-  };
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("demo") === "true") {
-      handleDemoLogin();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white flex flex-col items-center justify-center px-4">
@@ -71,17 +45,6 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold text-gray-800">MEO勝ち上げくん</h1>
           <p className="text-xs text-gray-400 mt-1">by ClinicApps</p>
         </div>
-
-        {/* デモ体験ボタン（目立つ位置） */}
-        <button
-          type="button"
-          onClick={handleDemoLogin}
-          disabled={demoLoading}
-          className="w-full py-3.5 text-white font-bold rounded-2xl disabled:opacity-50 transition-all text-sm mb-4 shadow-lg"
-          style={{ background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)' }}
-        >
-          {demoLoading ? "デモログイン中..." : "無料でデモ体験する"}
-        </button>
 
         {/* フォーム */}
         <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 space-y-5">
