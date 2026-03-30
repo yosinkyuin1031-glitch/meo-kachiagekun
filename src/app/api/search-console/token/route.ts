@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
   }
 
-  const { clientId, clientSecret, code, redirectUri, refreshToken } = await req.json();
+  const { clientId, clientSecret, code, redirectUri, refreshToken, code_verifier } = await req.json();
 
   try {
     let body: Record<string, string>;
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
         grant_type: "refresh_token",
       };
     } else {
-      // Exchange auth code
+      // Exchange auth code (with PKCE code_verifier)
       body = {
         client_id: clientId,
         client_secret: clientSecret,
@@ -32,6 +32,9 @@ export async function POST(req: NextRequest) {
         redirect_uri: redirectUri,
         grant_type: "authorization_code",
       };
+      if (code_verifier) {
+        body.code_verifier = code_verifier;
+      }
     }
 
     const res = await fetch("https://oauth2.googleapis.com/token", {

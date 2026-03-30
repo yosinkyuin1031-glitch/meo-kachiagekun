@@ -8,6 +8,23 @@ import {
   clearSearchConsoleSettings,
 } from "@/lib/supabase-storage";
 
+// ─── PKCE Helper ──────────────────────────────────
+function generateCodeVerifier(): string {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
 // ─── CopyButton ───────────────────────────────────
 function CopyButton({ text, label = "コピー" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -146,7 +163,7 @@ export default function SearchConsolePanel({ profile, onKeywordsImport }: Props)
     [refreshAccessToken]
   );
 
-  // ─── OAuth Flow ─────────────────────────────────
+  // ─── OAuth Flow (PKCE対応) ─────────────────────
   const handleAuth = useCallback(async () => {
     if (!clientId.trim() || !clientSecret.trim()) {
       setSetupError("Client IDとClient Secretの両方を入力してください。");
@@ -162,7 +179,14 @@ export default function SearchConsolePanel({ profile, onKeywordsImport }: Props)
     await saveSearchConsoleSettings(newSettings);
     setSettings(newSettings);
 
-    // Build OAuth URL
+    // PKCE: Generate code_verifier and code_challenge
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+    // Store code_verifier for token exchange
+    sessionStorage.setItem("gsc_code_verifier", codeVerifier);
+
+    // Build OAuth URL with PKCE
     const redirectUri = `${window.location.origin}/gsc-callback`;
     const scope = "https://www.googleapis.com/auth/webmasters.readonly";
     const authUrl =
@@ -172,7 +196,9 @@ export default function SearchConsolePanel({ profile, onKeywordsImport }: Props)
       `&response_type=code` +
       `&scope=${encodeURIComponent(scope)}` +
       `&access_type=offline` +
-      `&prompt=consent`;
+      `&prompt=consent` +
+      `&code_challenge=${encodeURIComponent(codeChallenge)}` +
+      `&code_challenge_method=S256`;
 
     // Open popup
     const popup = window.open(authUrl, "gsc_auth", "width=500,height=600");
@@ -184,8 +210,11 @@ export default function SearchConsolePanel({ profile, onKeywordsImport }: Props)
       popup?.close();
 
       const code = event.data.code as string;
+      const storedVerifier = sessionStorage.getItem("gsc_code_verifier") || "";
+      sessionStorage.removeItem("gsc_code_verifier");
+
       try {
-        // Exchange code for tokens
+        // Exchange code for tokens (with PKCE code_verifier)
         const tokenRes = await fetch("/api/search-console/token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -195,6 +224,7 @@ export default function SearchConsolePanel({ profile, onKeywordsImport }: Props)
             redirect_uri: redirectUri,
             client_id: clientId.trim(),
             client_secret: clientSecret.trim(),
+            code_verifier: storedVerifier,
           }),
         });
 
