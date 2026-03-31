@@ -164,6 +164,7 @@ export default function SearchConsolePanel({ profile, onKeywordsImport }: Props)
   );
 
   // ─── OAuth Flow (PKCE対応) ─────────────────────
+  // ─── OAuth: Full-page redirect flow ─────────────
   const handleAuth = useCallback(async () => {
     if (!clientId.trim() || !clientSecret.trim()) {
       setSetupError("Client IDとClient Secretの両方を入力してください。");
@@ -183,10 +184,11 @@ export default function SearchConsolePanel({ profile, onKeywordsImport }: Props)
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = await generateCodeChallenge(codeVerifier);
 
-    // Store code_verifier for token exchange
+    // Store code_verifier and return path for after redirect
     sessionStorage.setItem("gsc_code_verifier", codeVerifier);
+    sessionStorage.setItem("gsc_return_path", window.location.pathname + window.location.search);
 
-    // Build OAuth URL with PKCE
+    // Build OAuth URL with PKCE - full page redirect (not popup)
     const redirectUri = `${window.location.origin}/gsc-callback`;
     const scope = "https://www.googleapis.com/auth/webmasters.readonly";
     const authUrl =
@@ -200,103 +202,105 @@ export default function SearchConsolePanel({ profile, onKeywordsImport }: Props)
       `&code_challenge=${encodeURIComponent(codeChallenge)}` +
       `&code_challenge_method=S256`;
 
-    // Open popup
-    const popup = window.open(authUrl, "gsc_auth", "width=500,height=600");
+    // Full page redirect instead of popup
+    window.location.href = authUrl;
+  }, [clientId, clientSecret]);
 
-    // Listen for auth code from callback
-    const handler = async (event: MessageEvent) => {
-      if (event.data?.type !== "gsc_auth_code") return;
-      window.removeEventListener("message", handler);
-      popup?.close();
+  // ─── Handle OAuth callback code (after redirect back) ─────
+  const handleOAuthCode = useCallback(async (code: string) => {
+    const storedVerifier = sessionStorage.getItem("gsc_code_verifier") || "";
+    sessionStorage.removeItem("gsc_code_verifier");
+    const redirectUri = `${window.location.origin}/gsc-callback`;
 
-      const code = event.data.code as string;
-      const storedVerifier = sessionStorage.getItem("gsc_code_verifier") || "";
-      sessionStorage.removeItem("gsc_code_verifier");
+    try {
+      const tokenRes = await fetch("/api/search-console/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: redirectUri,
+          clientId: clientId.trim() || settings?.clientId,
+          clientSecret: clientSecret.trim() || settings?.clientSecret,
+          code_verifier: storedVerifier,
+        }),
+      });
 
-      try {
-        // Exchange code for tokens (with PKCE code_verifier)
-        const tokenRes = await fetch("/api/search-console/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            grant_type: "authorization_code",
-            code,
-            redirect_uri: redirectUri,
-            client_id: clientId.trim(),
-            client_secret: clientSecret.trim(),
-            code_verifier: storedVerifier,
-          }),
-        });
-
-        if (!tokenRes.ok) {
-          const err = await tokenRes.json().catch(() => ({}));
-          setSetupError(err?.error || "トークンの取得に失敗しました。");
-          return;
-        }
-
-        const tokenData = await tokenRes.json();
-        const updatedSettings: SearchConsoleSettings = {
-          clientId: clientId.trim(),
-          clientSecret: clientSecret.trim(),
-          accessToken: tokenData.access_token,
-          refreshToken: tokenData.refresh_token,
-          tokenExpiry: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
-        };
-        await saveSearchConsoleSettings(updatedSettings);
-        setSettings(updatedSettings);
-
-        // Fetch verified sites
-        const sitesRes = await fetch("/api/search-console/sites", {
-          headers: { Authorization: `Bearer ${tokenData.access_token}` },
-        });
-
-        if (!sitesRes.ok) {
-          setSetupError("サイト一覧の取得に失敗しました。");
-          return;
-        }
-
-        const sitesData = await sitesRes.json();
-        const siteList: { siteUrl: string; permissionLevel: string }[] =
-          sitesData.siteEntry || [];
-
-        if (siteList.length === 0) {
-          setSetupError(
-            "Search Consoleに登録されたサイトが見つかりません。Google Search Consoleでサイトを追加してください。"
-          );
-          return;
-        }
-
-        // Auto-select if only one site or one matches the clinic website
-        const clinicUrl = profile.urls?.websiteUrl;
-        const matchingSite = clinicUrl
-          ? siteList.find(
-              (s) =>
-                clinicUrl.includes(s.siteUrl.replace(/\/$/, "")) ||
-                s.siteUrl.includes(clinicUrl.replace(/\/$/, ""))
-            )
-          : null;
-
-        if (siteList.length === 1 || matchingSite) {
-          const chosen = matchingSite || siteList[0];
-          const finalSettings: SearchConsoleSettings = {
-            ...updatedSettings,
-            siteUrl: chosen.siteUrl,
-            siteName: chosen.siteUrl,
-          };
-          await saveSearchConsoleSettings(finalSettings);
-          setSettings(finalSettings);
-          setIsConnected(true);
-        } else {
-          setSites(siteList);
-          setShowSiteSelect(true);
-        }
-      } catch (err) {
-        setSetupError("認証処理中にエラーが発生しました。");
+      if (!tokenRes.ok) {
+        const err = await tokenRes.json().catch(() => ({}));
+        setSetupError(err?.error || "トークンの取得に失敗しました。");
+        return;
       }
-    };
 
-    window.addEventListener("message", handler);
-  }, [clientId, clientSecret, profile.urls?.websiteUrl]);
+      const tokenData = await tokenRes.json();
+      const updatedSettings: SearchConsoleSettings = {
+        clientId: clientId.trim() || settings?.clientId || "",
+        clientSecret: clientSecret.trim() || settings?.clientSecret || "",
+        accessToken: tokenData.accessToken,
+        refreshToken: tokenData.refreshToken,
+        tokenExpiry: new Date(Date.now() + tokenData.expiresIn * 1000).toISOString(),
+      };
+      await saveSearchConsoleSettings(updatedSettings);
+      setSettings(updatedSettings);
+
+      // Fetch verified sites
+      const sitesRes = await fetch("/api/search-console/sites", {
+        headers: { Authorization: `Bearer ${tokenData.accessToken}` },
+      });
+
+      if (!sitesRes.ok) {
+        setSetupError("サイト一覧の取得に失敗しました。");
+        return;
+      }
+
+      const sitesData = await sitesRes.json();
+      const siteList: { siteUrl: string; permissionLevel: string }[] =
+        sitesData.siteEntry || [];
+
+      if (siteList.length === 0) {
+        setSetupError(
+          "Search Consoleに登録されたサイトが見つかりません。Google Search Consoleでサイトを追加してください。"
+        );
+        return;
+      }
+
+      // Auto-select if only one site or one matches the clinic website
+      const clinicUrl = profile.urls?.websiteUrl;
+      const matchingSite = clinicUrl
+        ? siteList.find(
+            (s) =>
+              clinicUrl.includes(s.siteUrl.replace(/\/$/, "")) ||
+              s.siteUrl.includes(clinicUrl.replace(/\/$/, ""))
+          )
+        : null;
+
+      if (siteList.length === 1 || matchingSite) {
+        const chosen = matchingSite || siteList[0];
+        const finalSettings: SearchConsoleSettings = {
+          ...updatedSettings,
+          siteUrl: chosen.siteUrl,
+          siteName: chosen.siteUrl,
+        };
+        await saveSearchConsoleSettings(finalSettings);
+        setSettings(finalSettings);
+        setIsConnected(true);
+      } else {
+        setSites(siteList);
+        setShowSiteSelect(true);
+      }
+    } catch {
+      setSetupError("認証処理中にエラーが発生しました。");
+    }
+  }, [clientId, clientSecret, settings, profile.urls?.websiteUrl]);
+
+  // Check for OAuth callback code in localStorage (set by gsc-callback page)
+  useEffect(() => {
+    const code = localStorage.getItem("gsc_auth_code");
+    if (code) {
+      localStorage.removeItem("gsc_auth_code");
+      handleOAuthCode(code);
+    }
+  }, [handleOAuthCode]);
 
   // ─── Site selection ─────────────────────────────
   const handleSiteSelect = (siteUrl: string) => {

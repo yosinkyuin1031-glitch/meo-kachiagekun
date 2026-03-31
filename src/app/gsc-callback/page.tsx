@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense } from "react";
 
 function CallbackContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [status, setStatus] = useState<"processing" | "success" | "error">("processing");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState("認証処理中...");
 
   useEffect(() => {
     const code = searchParams.get("code");
@@ -25,19 +26,34 @@ function CallbackContent() {
       return;
     }
 
-    // Send the code back to the opener window
+    // Store code for the main page to pick up
+    localStorage.setItem("gsc_auth_code", code);
+
+    // If opened as popup, notify parent
     if (window.opener) {
-      window.opener.postMessage({ type: "gsc_auth_code", code }, window.location.origin);
-      setStatus("success");
-      setMessage("認証が完了しました。このウィンドウは自動的に閉じます。");
-      setTimeout(() => window.close(), 2000);
-    } else {
-      // If no opener (direct navigation), store code in localStorage for the main page to pick up
-      localStorage.setItem("gsc_auth_code", code);
-      setStatus("success");
-      setMessage("認証が完了しました。MEO勝ち上げくんのページに戻ってください。");
+      try {
+        window.opener.postMessage({ type: "gsc_auth_code", code }, window.location.origin);
+        setStatus("success");
+        setMessage("認証が完了しました。このウィンドウは自動的に閉じます。");
+        setTimeout(() => window.close(), 1500);
+        return;
+      } catch {
+        // If postMessage fails, fall through to redirect
+      }
     }
-  }, [searchParams]);
+
+    // Full-page redirect flow: redirect back to the main page
+    setStatus("success");
+    setMessage("認証が完了しました。ページに戻ります...");
+
+    // Get the return path from sessionStorage
+    const returnPath = sessionStorage.getItem("gsc_return_path");
+    sessionStorage.removeItem("gsc_return_path");
+
+    setTimeout(() => {
+      router.push(returnPath || "/");
+    }, 500);
+  }, [searchParams, router]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex items-center justify-center">
