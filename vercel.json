@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "src/app/api/**/*.ts": {
-      "maxDuration": 120
-    }
-  },
   "crons": [
     {
       "path": "/api/weekly-reminder",
