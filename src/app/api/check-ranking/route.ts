@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
 
-    const { businessName, area, keywords, apiKey } = await request.json();
+    const { businessName, area, keywords } = await request.json();
 
     if (!businessName || !area || !keywords?.length) {
       return NextResponse.json(
@@ -124,10 +124,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // サーバー環境変数からAPIキーを取得（顧客はAPIキー不要）
+    const apiKey = process.env.SERPAPI_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "APIキーが設定されていません。設定画面でSerpApiのAPIキーを入力してください。" },
-        { status: 400 }
+        { error: "システムのAPIキーが設定されていません。管理者に連絡してください。" },
+        { status: 500 }
+      );
+    }
+
+    // 月間チェック回数制限
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const { count } = await supabase
+      .from("meo_ranking_history")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .gte("checked_at", monthStart);
+
+    const MONTHLY_LIMIT = 4; // 月4回まで（1回=全キーワード一括チェック）
+    const checkCount = Math.ceil((count || 0) / keywords.length); // キーワード数で割って回数を算出
+    if (checkCount >= MONTHLY_LIMIT) {
+      return NextResponse.json(
+        { error: `今月の順位チェック回数上限（${MONTHLY_LIMIT}回）に達しました。来月またご利用ください。` },
+        { status: 429 }
       );
     }
 

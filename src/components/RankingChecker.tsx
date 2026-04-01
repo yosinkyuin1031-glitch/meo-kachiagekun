@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { BusinessProfile } from "@/lib/types";
 import { RankingResult, RankingHistory, TopPlace } from "@/lib/ranking-types";
-import { getRankingHistory, addRankingHistory, getSerpApiKey, saveSerpApiKey } from "@/lib/supabase-storage";
+import { getRankingHistory, addRankingHistory } from "@/lib/supabase-storage";
 import RankingTable from "./RankingTable";
 import HistoryChart from "./HistoryChart";
 import RankingTrendChart from "./RankingTrendChart";
@@ -616,8 +616,6 @@ function openReportWindow(
 
 export default function RankingChecker({ profile, onRegenerateKeyword }: Props) {
   const [subTab, setSubTab] = useState<SubTab>("check");
-  const [serpApiKey, setSerpApiKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
   const [results, setResults] = useState<RankingResult[]>([]);
   const [history, setHistory] = useState<RankingHistory[]>([]);
   const [checking, setChecking] = useState(false);
@@ -626,14 +624,9 @@ export default function RankingChecker({ profile, onRegenerateKeyword }: Props) 
   const [contents, setContents] = useState<GeneratedContent[]>([]);
 
   useEffect(() => {
-    getSerpApiKey().then(setSerpApiKey);
     getRankingHistory().then(setHistory);
     getContents().then(setContents);
   }, []);
-
-  const handleSaveKey = async () => {
-    await saveSerpApiKey(serpApiKey.trim());
-  };
 
   /** 現在の結果に対して、履歴から前回比較を取得 */
   const resultComparisons = useMemo(() => {
@@ -681,12 +674,6 @@ export default function RankingChecker({ profile, onRegenerateKeyword }: Props) 
       return;
     }
 
-    const key = serpApiKey.trim();
-    if (!key) {
-      setError("SerpApi APIキーが入力されていません。上の入力欄にSerpApiのAPIキーを入力してください。");
-      return;
-    }
-
     setChecking(true);
     setError("");
     setResults([]);
@@ -702,7 +689,6 @@ export default function RankingChecker({ profile, onRegenerateKeyword }: Props) 
           businessName: profile.name,
           area: profile.area,
           keywords: profile.keywords,
-          apiKey: key,
         }),
         signal: controller.signal,
       });
@@ -711,12 +697,10 @@ export default function RankingChecker({ profile, onRegenerateKeyword }: Props) 
       const data = await res.json();
       if (!res.ok) {
         const errMsg = data.error || "";
-        if (errMsg.includes("API key") || errMsg.includes("Invalid")) {
-          setError("SerpApiのAPIキーが正しくありません。入力内容を確認してください。");
-        } else if (errMsg.includes("rate limit") || errMsg.includes("limit")) {
-          setError("SerpApiの利用回数が上限に達しました。月の利用回数をserpapi.comで確認してください。");
+        if (errMsg.includes("上限")) {
+          setError(errMsg);
         } else {
-          setError("順位チェックに失敗しました。もう一度お試しください。");
+          setError(errMsg || "順位チェックに失敗しました。もう一度お試しください。");
         }
         return;
       }
@@ -755,37 +739,7 @@ export default function RankingChecker({ profile, onRegenerateKeyword }: Props) 
 
   return (
     <div className="space-y-6">
-      {/* SerpApi APIキー設定 */}
-      <div className="bg-white rounded-xl shadow-sm p-5">
-        <h3 className="font-bold text-gray-800 mb-3">SerpApi APIキー</h3>
-        <div className="flex gap-2">
-          <input
-            type={showKey ? "text" : "password"}
-            value={serpApiKey}
-            onChange={(e) => setSerpApiKey(e.target.value)}
-            placeholder="SerpApiのAPIキーを入力"
-            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-orange-500"
-          />
-          <button
-            onClick={() => setShowKey(!showKey)}
-            className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200"
-          >
-            {showKey ? "隠す" : "表示"}
-          </button>
-          <button
-            onClick={handleSaveKey}
-            className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700"
-          >
-            保存
-          </button>
-        </div>
-        <p className="text-xs text-gray-400 mt-1">
-          <a href="https://serpapi.com/" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline">
-            serpapi.com
-          </a>
-          で無料アカウント作成 → APIキーを取得（月100回まで無料）
-        </p>
-      </div>
+      {/* 月間利用状況 */}
 
       {/* サブタブ */}
       <div className="flex gap-1 bg-white rounded-xl p-1.5 shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide" style={{ WebkitOverflowScrolling: "touch" }}>

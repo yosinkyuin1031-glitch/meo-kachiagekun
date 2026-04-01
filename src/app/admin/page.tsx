@@ -13,11 +13,35 @@ interface UserInfo {
   contentCount: number;
 }
 
-// 管理者メールアドレスのリスト（環境変数で管理）
+interface BusinessSearchResult {
+  title: string;
+  address?: string;
+  rating?: number;
+  reviews?: number;
+  website?: string;
+  phone?: string;
+}
+
+interface SetupResult {
+  success: boolean;
+  email: string;
+  businessName: string;
+  area: string;
+  keywords: string[];
+  message: string;
+}
+
+// 管理者メールアドレスのリスト
 const ADMIN_EMAILS = [
   "ooguchiyouhei@gmail.com",
-  "admin@meo-kachiagehkun.com",
 ];
+
+function generatePassword(): string {
+  const chars = "abcdefghijkmnpqrstuvwxyz23456789";
+  let pw = "";
+  for (let i = 0; i < 10; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+  return pw;
+}
 
 export default function AdminPage() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -31,6 +55,101 @@ export default function AdminPage() {
     totalRankingChecks: 0,
   });
   const [dataLoading, setDataLoading] = useState(true);
+
+  // 新規顧客セットアップ
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<BusinessSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedBusiness, setSelectedBusiness] = useState<BusinessSearchResult | null>(null);
+  const [setupEmail, setSetupEmail] = useState("");
+  const [setupPassword, setSetupPassword] = useState("");
+  const [setupArea, setSetupArea] = useState("");
+  const [setupCategory, setSetupCategory] = useState("整体院");
+  const [settingUp, setSettingUp] = useState(false);
+  const [setupResult, setSetupResult] = useState<SetupResult | null>(null);
+  const [setupError, setSetupError] = useState("");
+
+  const handleSearchBusiness = async () => {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    setSearchResults([]);
+    setSelectedBusiness(null);
+    setSetupError("");
+    try {
+      const res = await fetch("/api/admin/search-business", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: searchQuery }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSetupError(data.error || "検索に失敗しました");
+        return;
+      }
+      setSearchResults(data.results || []);
+    } catch {
+      setSetupError("検索に失敗しました");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleSelectBusiness = (biz: BusinessSearchResult) => {
+    setSelectedBusiness(biz);
+    // 住所からエリアを自動抽出（「〇〇県〇〇市」or「〇〇市」部分）
+    const addr = biz.address || "";
+    const areaMatch = addr.match(/(東京都|北海道|(?:大阪|京都)府|.+?県)?\s*(.+?[市区町村])/);
+    if (areaMatch) {
+      setSetupArea(areaMatch[2] || areaMatch[0]);
+    }
+    // 業種を自動判定
+    const name = biz.title || "";
+    if (name.includes("鍼灸")) setSetupCategory("鍼灸院");
+    else if (name.includes("接骨")) setSetupCategory("接骨院");
+    else if (name.includes("治療")) setSetupCategory("治療院");
+    else setSetupCategory("整体院");
+
+    // パスワードを自動生成
+    setSetupPassword(generatePassword());
+  };
+
+  const handleSetupCustomer = async () => {
+    if (!selectedBusiness || !setupEmail || !setupPassword || !setupArea) {
+      setSetupError("全ての項目を入力してください");
+      return;
+    }
+    setSettingUp(true);
+    setSetupError("");
+    setSetupResult(null);
+    try {
+      const res = await fetch("/api/admin/setup-customer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: setupEmail,
+          password: setupPassword,
+          businessName: selectedBusiness.title,
+          address: selectedBusiness.address,
+          area: setupArea,
+          category: setupCategory,
+          website: selectedBusiness.website,
+          phone: selectedBusiness.phone,
+          rating: selectedBusiness.rating,
+          reviews: selectedBusiness.reviews,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSetupError(data.error || "セットアップに失敗しました");
+        return;
+      }
+      setSetupResult(data);
+    } catch {
+      setSetupError("セットアップに失敗しました");
+    } finally {
+      setSettingUp(false);
+    }
+  };
 
   useEffect(() => {
     if (authLoading) return;
@@ -202,6 +321,146 @@ export default function AdminPage() {
               )}
             </div>
           ))}
+        </div>
+
+        {/* 新規顧客セットアップ */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">新規顧客セットアップ</h2>
+
+          {/* STEP 1: 院名検索 */}
+          <div className="mb-6">
+            <h3 className="text-sm font-bold text-gray-700 mb-2">STEP 1: Google Mapsで院を検索</h3>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearchBusiness()}
+                placeholder="院名を入力（例：○○整体院 大阪）"
+                className="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleSearchBusiness}
+                disabled={searching}
+                className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300"
+              >
+                {searching ? "検索中..." : "検索"}
+              </button>
+            </div>
+
+            {/* 検索結果 */}
+            {searchResults.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {searchResults.slice(0, 5).map((biz, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSelectBusiness(biz)}
+                    className={`w-full text-left p-3 rounded-lg border transition-all ${
+                      selectedBusiness?.title === biz.title
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="font-medium text-gray-800">{biz.title}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{biz.address}</div>
+                    <div className="flex gap-3 mt-1">
+                      {biz.rating && <span className="text-xs text-amber-600">★ {biz.rating}</span>}
+                      {biz.reviews && <span className="text-xs text-gray-400">口コミ {biz.reviews}件</span>}
+                      {biz.website && <span className="text-xs text-blue-500">HP有</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* STEP 2: アカウント情報入力 */}
+          {selectedBusiness && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <h3 className="text-sm font-bold text-gray-700 mb-3">STEP 2: アカウント情報</h3>
+              <div className="space-y-3">
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="text-sm font-bold text-blue-800">{selectedBusiness.title}</div>
+                  <div className="text-xs text-blue-600">{selectedBusiness.address}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">メールアドレス</label>
+                    <input
+                      type="email"
+                      value={setupEmail}
+                      onChange={(e) => setSetupEmail(e.target.value)}
+                      placeholder="customer@example.com"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">パスワード（自動生成）</label>
+                    <input
+                      type="text"
+                      value={setupPassword}
+                      onChange={(e) => setSetupPassword(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">エリア</label>
+                    <input
+                      type="text"
+                      value={setupArea}
+                      onChange={(e) => setSetupArea(e.target.value)}
+                      placeholder="例：大阪市北区"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">業種</label>
+                    <select
+                      value={setupCategory}
+                      onChange={(e) => setSetupCategory(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="整体院">整体院</option>
+                      <option value="鍼灸院">鍼灸院</option>
+                      <option value="接骨院">接骨院</option>
+                      <option value="治療院">治療院</option>
+                    </select>
+                  </div>
+                </div>
+                <button
+                  onClick={handleSetupCustomer}
+                  disabled={settingUp}
+                  className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg text-sm font-bold hover:from-green-600 hover:to-emerald-600 disabled:from-gray-300 disabled:to-gray-300 transition-all shadow-md"
+                >
+                  {settingUp ? "セットアップ中..." : "アカウント作成＋院情報セットアップ"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* エラー表示 */}
+          {setupError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg mb-4">
+              <p className="text-sm text-red-700">{setupError}</p>
+            </div>
+          )}
+
+          {/* セットアップ完了 */}
+          {setupResult && (
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <h3 className="font-bold text-green-800 mb-2">セットアップ完了</h3>
+              <div className="space-y-1 text-sm">
+                <p><span className="font-medium text-gray-600">院名:</span> {setupResult.businessName}</p>
+                <p><span className="font-medium text-gray-600">メール:</span> {setupResult.email}</p>
+                <p><span className="font-medium text-gray-600">パスワード:</span> <span className="font-mono bg-white px-2 py-0.5 rounded">{setupPassword}</span></p>
+                <p><span className="font-medium text-gray-600">エリア:</span> {setupResult.area}</p>
+                <p><span className="font-medium text-gray-600">キーワード:</span> {setupResult.keywords.join("、")}</p>
+              </div>
+              <p className="text-xs text-green-600 mt-3">
+                このログイン情報を顧客に送ってください。ログイン後すぐに利用開始できます。
+              </p>
+            </div>
+          )}
         </div>
 
         {/* ユーザー情報 */}

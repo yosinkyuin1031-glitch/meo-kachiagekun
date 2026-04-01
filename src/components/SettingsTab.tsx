@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { ClinicProfile, WordPressSettings, NoteProfile } from "@/lib/types";
-import { getSerpApiKey, saveSerpApiKey, getClinics, getContents, getRankingHistory, getChecklist } from "@/lib/supabase-storage";
+import { getClinics, getContents, getRankingHistory, getChecklist } from "@/lib/supabase-storage";
 import { ConfirmDialog, useConfirmDialog } from "./ConfirmDialog";
 import { useToast } from "./Toast";
 
@@ -36,18 +36,9 @@ export default function SettingsTab({
   const [showAddForm, setShowAddForm] = useState(clinics.length === 0);
   const { confirmingId: deletingClinicId, requestConfirm: requestDeleteClinic, cancelConfirm: cancelDeleteClinic, isConfirming: isConfirmingDeleteClinic } = useConfirmDialog();
 
-  // SerpApi
-  const [serpApiKey, setSerpApiKey] = useState("");
-  const [showSerpKey, setShowSerpKey] = useState(false);
-  const [serpSaved, setSerpSaved] = useState(false);
-
   // データエクスポート
   const [exporting, setExporting] = useState(false);
   const [exportDone, setExportDone] = useState(false);
-
-  useEffect(() => {
-    getSerpApiKey().then(setSerpApiKey);
-  }, []);
 
   const handleExportData = async () => {
     setExporting(true);
@@ -134,12 +125,6 @@ export default function SettingsTab({
     }
   };
 
-  const handleSaveSerpApiKey = async () => {
-    await saveSerpApiKey(serpApiKey.trim());
-    setSerpSaved(true);
-    setTimeout(() => setSerpSaved(false), 2000);
-  };
-
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       {/* AI設定（共通） */}
@@ -200,51 +185,41 @@ export default function SettingsTab({
           )}
         </div>
 
-        {/* 予備：個別APIキー入力（折りたたみ） */}
-        <details className="group">
-          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600 select-none">
-            詳細設定（個別APIキーを使用する場合）
-          </summary>
-          <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Anthropic APIキー（個別設定・オプション）
-            </label>
-            <p className="text-xs text-gray-400 mb-2">
-              サーバーのキーが使えない場合のフォールバック用です。通常は空欄のままでOKです。
-            </p>
-            <div className="flex gap-2">
-              <input
-                type={showKey ? "text" : "password"}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-ant-..."
-                className="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-mono bg-white outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                onClick={() => setShowKey(!showKey)}
-                className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs hover:bg-gray-200"
-              >
-                {showKey ? "隠す" : "表示"}
-              </button>
-            </div>
-            <div className="flex items-center justify-between mt-2">
-              <p className="text-xs text-gray-400">
-                <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
-                  Anthropic Console
-                </a>
-                で取得
-              </p>
-              <button
-                onClick={handleSaveApiKey}
-                disabled={keyStatus === "testing"}
-                className="px-4 py-1.5 rounded-lg text-xs font-medium bg-gray-600 text-white hover:bg-gray-700"
-              >
-                保存＆テスト
-              </button>
-            </div>
-          </div>
-        </details>
       </div>
+
+      {/* セットアップ完了ガイド */}
+      {clinics.length > 0 && (() => {
+        const activeClinic = clinics.find(c => c.id === activeClinicId) || clinics[0];
+        const missing: string[] = [];
+        if (!activeClinic?.strengths) missing.push("院の強み・特徴");
+        if (!activeClinic?.specialty) missing.push("得意な施術・専門分野");
+        if (!activeClinic?.experience) missing.push("院長の経歴・資格");
+        if (missing.length > 0) {
+          return (
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl shadow-sm p-5 border border-amber-200">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-lg">💡</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-amber-800 text-sm mb-1">
+                    あと{missing.length}項目入力するとコンテンツの質がアップします
+                  </h3>
+                  <ul className="text-xs text-amber-700 space-y-0.5">
+                    {missing.map((m) => (
+                      <li key={m}>・{m}</li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-amber-600 mt-2">
+                    下の院情報から編集できます。入力すると、生成されるブログ・GBP投稿・FAQ記事にあなたの院独自の情報が反映されます。
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* 院一覧 */}
       <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
@@ -403,48 +378,6 @@ export default function SettingsTab({
         )}
       </div>
 
-      {/* SerpApiキー */}
-      <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-        <h3 className="font-bold text-gray-800 text-lg mb-4">SerpApi設定</h3>
-        <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
-          <label className="block text-sm font-medium text-amber-800 mb-1">
-            SerpApi APIキー
-          </label>
-          <div className="flex gap-2">
-            <input
-              type={showSerpKey ? "text" : "password"}
-              value={serpApiKey}
-              onChange={(e) => setSerpApiKey(e.target.value)}
-              placeholder="SerpApi APIキー"
-              className="flex-1 px-4 py-2.5 border border-amber-200 rounded-lg text-sm font-mono bg-white outline-none focus:ring-2 focus:ring-amber-500"
-            />
-            <button
-              onClick={() => setShowSerpKey(!showSerpKey)}
-              className="px-3 py-2 bg-amber-100 text-amber-700 rounded-lg text-xs hover:bg-amber-200"
-            >
-              {showSerpKey ? "隠す" : "表示"}
-            </button>
-          </div>
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-xs text-amber-600">
-              <a href="https://serpapi.com/" target="_blank" rel="noopener noreferrer" className="underline">
-                SerpApi
-              </a>
-              で取得（MEO順位チェックに使用）
-            </p>
-            <button
-              onClick={handleSaveSerpApiKey}
-              className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                serpSaved
-                  ? "bg-green-500 text-white"
-                  : "bg-amber-600 text-white hover:bg-amber-700"
-              }`}
-            >
-              {serpSaved ? "保存済み" : "保存"}
-            </button>
-          </div>
-        </div>
-      </div>
 
       {/* データエクスポート */}
       <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
