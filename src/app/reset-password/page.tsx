@@ -11,13 +11,32 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
 
   useEffect(() => {
-    supabase.auth.onAuthStateChange((event) => {
+    // PASSWORD_RECOVERYイベントを待つ
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
         setSessionReady(true);
       }
     });
+
+    // URLハッシュにトークンがある場合、セッション復元を試みる
+    const hash = window.location.hash;
+    if (hash && hash.includes("access_token")) {
+      // Supabaseが自動的にハッシュからセッションを復元するのを待つ
+      // onAuthStateChangeで PASSWORD_RECOVERY が発火する
+    }
+
+    // 10秒後にタイムアウト
+    const timer = setTimeout(() => {
+      setTimedOut(true);
+    }, 10000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timer);
+    };
   }, [supabase.auth]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -75,8 +94,32 @@ export default function ResetPasswordPage() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white flex items-center justify-center px-4">
         <div className="w-full max-w-md">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center space-y-4">
-            <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-            <p className="text-sm text-gray-600">認証情報を確認中...</p>
+            {!timedOut ? (
+              <>
+                <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+                <p className="text-sm text-gray-600">認証情報を確認中...</p>
+              </>
+            ) : (
+              <>
+                <div className="text-4xl">&#9888;</div>
+                <h2 className="text-lg font-bold text-gray-800">リンクが無効です</h2>
+                <p className="text-sm text-gray-600">
+                  パスワードリセット用のリンクが無効または期限切れです。<br />
+                  お手数ですが、もう一度リセットメールを送信してください。
+                </p>
+                <a
+                  href="/forgot-password"
+                  className="inline-block mt-4 px-6 py-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+                >
+                  パスワードリセットへ
+                </a>
+                <p className="text-sm text-gray-500 mt-2">
+                  <a href="/login" className="text-blue-600 font-medium hover:underline">
+                    ログインページへ戻る
+                  </a>
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>
