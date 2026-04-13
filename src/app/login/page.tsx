@@ -98,11 +98,8 @@ export default function LoginPage() {
             {loading ? "ログイン中..." : "ログイン"}
           </button>
 
-          <p className="text-center text-sm text-gray-500">
-            アカウントをお持ちでない方は{" "}
-            <a href="/signup" className="text-blue-600 font-medium hover:underline">
-              新規登録
-            </a>
+          <p className="text-center text-xs text-gray-400">
+            ※ アカウント作成・パスワード再発行は管理者にお問い合わせください
           </p>
         </form>
 
