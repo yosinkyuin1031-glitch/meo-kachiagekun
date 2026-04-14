@@ -22,6 +22,20 @@ export async function POST() {
         { onConflict: "user_id" }
       );
 
+    // モニター開始日が未設定なら今日を記録
+    const { data: settings } = await supabase
+      .from("meo_user_settings")
+      .select("monitor_start")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!settings?.monitor_start) {
+      await supabase
+        .from("meo_user_settings")
+        .update({ monitor_start: new Date().toISOString() })
+        .eq("user_id", user.id);
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("Init user error:", e instanceof Error ? e.message : e);

@@ -364,7 +364,10 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
   // ---------- API helpers ----------
   const callGenerate = async (prompt: string, type: string, maxTokens?: number) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒タイムアウト
+    // FAQ/Blog/noteは生成に時間がかかるため長めのタイムアウト
+    const longTypes = ["faq", "blog", "note"];
+    const timeoutMs = longTypes.includes(type) ? 180000 : 90000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const res = await fetch("/api/generate", {
@@ -403,10 +406,12 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
       return data.content as string;
     } catch (err) {
       clearTimeout(timeoutId);
-      if (err instanceof Error && (err.name === "AbortError" || err.message.includes("aborted"))) {
-        throw new Error("処理がタイムアウトしました。時間をおいてもう一度お試しください。");
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[callGenerate] type=${type} error:`, errMsg);
+      if (err instanceof Error && (err.name === "AbortError" || errMsg.includes("aborted"))) {
+        throw new Error(`[${type}] 処理がタイムアウトしました（${timeoutMs / 1000}秒）。時間をおいてもう一度お試しください。`);
       }
-      throw err;
+      throw new Error(`[${type}] ${errMsg}`);
     }
   };
 
@@ -526,45 +531,142 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
     try {
       // ── Step 1: FAQ生成 ──
       if (contentOptions.faq || contentOptions.blog) {
-        currentStep++;
-        setProgressMessage(`${currentStep}/${totalSteps}件目：FAQ（よくある質問）を生成中...`);
-
-        const faqPrompt = faqIndividualListPrompt(profile, keyword, faqCount, accCtx) + ANTI_AI_INSTRUCTION;
-        const faqRaw = await callGenerate(faqPrompt, "faq");
-
         try {
-          const jsonMatch = faqRaw.match(/\[[\s\S]*\]/);
-          generatedFaqItems = JSON.parse(jsonMatch ? jsonMatch[0] : faqRaw);
-        } catch {
-          generatedFaqItems = [
-            {
-              question: `${keyword}の原因は何ですか？`,
-              answer: `<p>${keyword}の原因は様々です。${profile.name}にご相談ください。</p>`,
-              seoTitle: `${keyword}の原因｜${profile.area}${profile.name}`,
-              seoDescription: `${keyword}の原因について${profile.name}が解説します。`,
-              slug: `faq-${keyword}-${Date.now()}`,
-              blogTitle: `【${keyword}の原因と改善法】${profile.area}${profile.name}`,
-              blogSlug: `${keyword}-cause-${Date.now()}`,
-            },
-          ];
-        }
+          currentStep++;
+          setProgressMessage(`${currentStep}/${totalSteps}件目：FAQ（よくある質問）を生成中...`);
 
-        generatedFaqItems = generatedFaqItems.slice(0, faqCount);
-        setFaqItems([...generatedFaqItems]);
+          // JSONパース（複数パターン対応・途中切れ修復あり）
+          const parseFaqJson = (raw: string): FaqItem[] => {
+            let cleaned = raw
+              .replace(/```json\s*/gi, "")
+              .replace(/```\s*/g, "")
+              .trim();
 
-        // FAQ保存
-        if (contentOptions.faq) {
-          for (let i = 0; i < generatedFaqItems.length; i++) {
-            const faq = generatedFaqItems[i];
-            await saveContent({
-              id: `faq-bulk-${Date.now()}-${i}`,
-              type: "faq",
-              title: faq.seoTitle || faq.question,
-              content: `<div class="faq-item"><h3>${faq.question}</h3>${faq.answer}</div>`,
-              keyword,
-              createdAt: new Date().toISOString(),
-            });
+            // 1. 完全なJSON配列を探す
+            const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+              try {
+                const parsed = JSON.parse(jsonMatch[0]);
+                if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.question) {
+                  return parsed;
+                }
+              } catch { /* parse error, try repair */ }
+            }
+
+            // 2. JSON途中切れ修復：[ で始まるが ] がない場合
+            const bracketStart = cleaned.indexOf("[");
+            if (bracketStart >= 0) {
+              let jsonStr = cleaned.slice(bracketStart);
+              // 最後の完全なオブジェクト } の後で切って ] を追加
+              const lastCompleteObj = jsonStr.lastIndexOf("}");
+              if (lastCompleteObj > 0) {
+                jsonStr = jsonStr.slice(0, lastCompleteObj + 1) + "]";
+                // 末尾のカンマを除去
+                jsonStr = jsonStr.replace(/,\s*\]/, "]");
+                try {
+                  const parsed = JSON.parse(jsonStr);
+                  if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.question) {
+                    return parsed;
+                  }
+                } catch { /* repair failed */ }
+              }
+            }
+
+            // 3. JSONオブジェクト内の配列を探す
+            const objMatch = cleaned.match(/\{[\s\S]*\}/);
+            if (objMatch) {
+              try {
+                const obj = JSON.parse(objMatch[0]);
+                const arr = Object.values(obj).find((v) => Array.isArray(v)) as FaqItem[] | undefined;
+                if (arr && arr.length > 0 && arr[0]?.question) return arr;
+              } catch { /* not an object */ }
+            }
+
+            throw new Error("NO_JSON");
+          };
+
+          // テキスト形式のQ&Aからパース（フォールバック）
+          const parseQaText = (raw: string): FaqItem[] => {
+            const items: FaqItem[] = [];
+            // Q: ... A: ... パターン
+            const qaPattern = /Q[.:：\d]*\s*(.+?)[\n\r]+A[.:：]*\s*([\s\S]*?)(?=(?:Q[.:：\d]|\s*$))/gi;
+            let match;
+            while ((match = qaPattern.exec(raw)) !== null) {
+              const question = match[1].trim();
+              const answer = match[2].trim();
+              if (question && answer) {
+                items.push({
+                  question,
+                  answer: answer.startsWith("<") ? answer : `<p>${answer}</p>`,
+                  seoTitle: `${question}｜${profile.area}${profile.name}`.slice(0, 32),
+                  seoDescription: answer.replace(/<[^>]*>/g, "").slice(0, 120),
+                  slug: `faq-${keyword}-${Date.now()}-${items.length}`,
+                  blogTitle: `${question}を専門家が解説｜${profile.name}`.slice(0, 40),
+                  blogSlug: `${keyword}-faq-${items.length}-${Date.now()}`,
+                });
+              }
+            }
+            return items;
+          };
+
+          // 1回目: JSON形式で生成
+          const faqPromptText = faqIndividualListPrompt(profile, keyword, faqCount, accCtx) + ANTI_AI_INSTRUCTION;
+          const faqRaw = await callGenerate(faqPromptText, "faq");
+          console.log("FAQ raw response (first 300):", faqRaw.slice(0, 300));
+
+          try {
+            generatedFaqItems = parseFaqJson(faqRaw);
+          } catch {
+            console.warn("FAQ JSON parse failed, trying text parse...");
+            // テキスト形式からパース試行
+            const textParsed = parseQaText(faqRaw);
+            if (textParsed.length > 0) {
+              console.log("FAQ text parse succeeded:", textParsed.length, "items");
+              generatedFaqItems = textParsed;
+            } else {
+              // リトライ: シンプルなプロンプトでJSON生成
+              console.warn("FAQ text parse also failed, retrying with simple prompt...");
+              const simplePrompt = `${profile.area}の${profile.name}（${profile.category}）について、「${keyword}」に関するFAQを${faqCount}個、以下のJSON配列で出力してください。JSON以外は一切出力しないでください。
+
+[{"question":"質問","answer":"<p>回答（150〜300文字のHTML）</p>","seoTitle":"SEOタイトル","seoDescription":"メタ説明","slug":"english-slug","blogTitle":"ブログタイトル","blogSlug":"blog-slug"}]`;
+              const retryRaw = await callGenerate(simplePrompt, "faq");
+              console.log("FAQ retry raw (first 300):", retryRaw.slice(0, 300));
+              try {
+                generatedFaqItems = parseFaqJson(retryRaw);
+              } catch {
+                const retryText = parseQaText(retryRaw);
+                if (retryText.length > 0) {
+                  generatedFaqItems = retryText;
+                } else {
+                  throw new Error("FAQ生成に失敗しました。キーワードを変えて再度お試しください。");
+                }
+              }
+            }
           }
+
+          generatedFaqItems = generatedFaqItems.slice(0, faqCount);
+          setFaqItems([...generatedFaqItems]);
+
+          // FAQ保存
+          if (contentOptions.faq) {
+            for (let i = 0; i < generatedFaqItems.length; i++) {
+              const faq = generatedFaqItems[i];
+              await saveContent({
+                id: `faq-bulk-${Date.now()}-${i}`,
+                type: "faq",
+                title: faq.seoTitle || faq.question,
+                content: `<div class="faq-item"><h3>${faq.question}</h3>${faq.answer}</div>`,
+                keyword,
+                createdAt: new Date().toISOString(),
+              });
+            }
+          }
+        } catch (faqErr) {
+          const errMsg = faqErr instanceof Error ? faqErr.message : "FAQ生成に失敗しました。";
+          console.error("FAQ generation failed:", errMsg);
+          setError((prev) => prev ? `${prev}\nFAQ: ${errMsg}` : `FAQ: ${errMsg}`);
+          generatedFaqItems = [];
+          setFaqItems([]);
         }
       }
 
@@ -1071,11 +1173,19 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
 
                 {/* 完了時のサマリー */}
                 {!isRunning && progressMessage === "完了！" && (
-                  <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <p className="text-sm text-green-700 font-medium">
-                      全{doneCount}件のコンテンツを生成しました。下にスクロールして結果を確認してください。
-                    </p>
-                  </div>
+                  <>
+                    <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-sm text-green-700 font-medium">
+                        全{doneCount}件のコンテンツを生成しました。下にスクロールして結果を確認してください。
+                      </p>
+                    </div>
+                    {error && (
+                      <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-xs font-bold text-red-700 mb-1">一部のコンテンツ生成でエラーが発生しました：</p>
+                        <pre className="text-xs text-red-600 whitespace-pre-wrap">{error}</pre>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             );
@@ -1117,9 +1227,12 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
                     <h4 className="text-sm font-bold text-gray-800">
                       Q{i + 1}. {faq.question}
                     </h4>
-                    <CopyButton
-                      text={`Q. ${faq.question}\nA. ${faq.answer.replace(/<[^>]*>/g, "")}`}
-                    />
+                    <div className="flex gap-1 shrink-0">
+                      <CopyButton text={faq.question} label="タイトル" />
+                      <CopyButton
+                        text={`Q. ${faq.question}\nA. ${faq.answer.replace(/<[^>]*>/g, "")}`}
+                      />
+                    </div>
                   </div>
                   <div
                     className="text-sm text-gray-700 whitespace-pre-wrap"

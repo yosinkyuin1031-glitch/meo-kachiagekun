@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 
+// Vercelサーバーレス関数のタイムアウトを延長（Blog/noteの長文生成対応）
+export const maxDuration = 120;
+
 // モデルフォールバック（順番に試す）
 const MODEL_CANDIDATES = [
   "claude-sonnet-4-6",
@@ -12,7 +15,7 @@ const MODEL_CANDIDATES = [
 // タイプ別のmax_tokens設定
 const MAX_TOKENS_MAP: Record<string, number> = {
   gbp: 1500,
-  faq: 3000,
+  faq: 8000,
   "faq-short": 2000,
   note: 5000,
   blog: 5000,
@@ -70,14 +73,17 @@ export async function POST(request: NextRequest) {
     }
 
     const { apiKey, prompt, type } = await request.json();
+    console.log(`[generate] type=${type} prompt_len=${prompt?.length || 0} user=${user.id.slice(0, 8)}`);
 
     const resolvedKey = await resolveApiKey(apiKey, user.id);
     if (!resolvedKey) {
+      console.error(`[generate] No API key resolved for type=${type}`);
       return NextResponse.json(
         { error: "APIキーが設定されていません。設定画面で入力するか、管理者に連絡してください。" },
         { status: 400 }
       );
     }
+    console.log(`[generate] key_prefix=${resolvedKey.slice(0, 10)} key_len=${resolvedKey.length}`);
 
     if (!prompt) {
       return NextResponse.json({ error: "プロンプトが空です" }, { status: 400 });
@@ -90,11 +96,14 @@ export async function POST(request: NextRequest) {
     let lastError: Error | null = null;
     for (const model of MODEL_CANDIDATES) {
       try {
+        console.log(`[generate] Trying model=${model} type=${type} maxTokens=${maxTokens}`);
         const text = await tryGenerate(client, model, prompt, maxTokens);
+        console.log(`[generate] Success model=${model} type=${type} response_len=${text.length}`);
         return NextResponse.json({ content: text, type, model });
       } catch (e) {
         const err = e instanceof Error ? e : new Error(String(e));
         const msg = err.message.toLowerCase();
+        console.error(`[generate] Model ${model} failed for type=${type}: ${err.message.slice(0, 200)}`);
 
         if (msg.includes("authentication") || msg.includes("api_key") || msg.includes("invalid x-api-key") || msg.includes("invalid api key")) {
           return NextResponse.json(
@@ -138,7 +147,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.error("全モデル生成失敗:", lastError?.message);
+    console.error(`[generate] 全モデル生成失敗 type=${type}:`, lastError?.message);
     return NextResponse.json(
       { error: "コンテンツの生成に失敗しました。しばらくしてから再度お試しください。" },
       { status: 500 }

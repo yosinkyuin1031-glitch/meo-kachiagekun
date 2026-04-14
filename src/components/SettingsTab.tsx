@@ -127,65 +127,6 @@ export default function SettingsTab({
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
-      {/* AI設定（共通） */}
-      <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-        <h3 className="font-bold text-gray-800 text-lg mb-4">AI設定（全院共通）</h3>
-
-        {/* サーバー側APIキーのステータス表示 */}
-        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 mb-4">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-sm font-medium text-blue-800">サーバー設定</span>
-          </div>
-          <p className="text-xs text-blue-700">
-            Anthropic APIキーはサーバー側の環境変数で管理されています。
-            BtoB運用では管理者がサーバーで一括管理するため、個別のキー入力は不要です。
-          </p>
-          <button
-            onClick={async () => {
-              setKeyStatus("testing");
-              setKeyError("");
-              try {
-                const res = await fetch("/api/generate", {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({}),
-                });
-                const data = await res.json();
-                if (data.valid) {
-                  setKeyStatus("valid");
-                  setTimeout(() => setKeyStatus("idle"), 3000);
-                } else {
-                  setKeyStatus("invalid");
-                  setKeyError(data.error || "サーバー側のAPIキーが設定されていないか、無効です。管理者にお問い合わせください。");
-                }
-              } catch {
-                setKeyStatus("invalid");
-                setKeyError("インターネット接続を確認して、もう一度お試しください。");
-              }
-            }}
-            disabled={keyStatus === "testing"}
-            className={`mt-3 px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              keyStatus === "valid" ? "bg-green-500 text-white"
-              : keyStatus === "invalid" ? "bg-red-500 text-white"
-              : keyStatus === "testing" ? "bg-yellow-500 text-white animate-pulse"
-              : "bg-blue-600 text-white hover:bg-blue-700"
-            }`}
-          >
-            {keyStatus === "testing" ? "接続テスト中..."
-              : keyStatus === "valid" ? "接続OK"
-              : keyStatus === "invalid" ? "再テスト"
-              : "接続テスト"}
-          </button>
-          {keyStatus === "invalid" && keyError && (
-            <p className="text-xs text-red-600 mt-2 bg-red-50 px-3 py-1.5 rounded">{keyError}</p>
-          )}
-          {keyStatus === "valid" && (
-            <p className="text-xs text-green-600 mt-2 bg-green-50 px-3 py-1.5 rounded">サーバーAPIキーの接続を確認しました</p>
-          )}
-        </div>
-
-      </div>
 
       {/* セットアップ完了ガイド */}
       {clinics.length > 0 && (() => {

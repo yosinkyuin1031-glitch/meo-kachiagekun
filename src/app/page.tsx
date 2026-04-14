@@ -23,14 +23,12 @@ import GbpImageGenerator from "@/components/GbpImageGenerator";
 import SettingsTab from "@/components/SettingsTab";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import RankingChecker from "@/components/RankingChecker";
-import SearchConsolePanel from "@/components/SearchConsolePanel";
 import ChecklistTab from "@/components/ChecklistTab";
 import ReviewReplyGenerator from "@/components/ReviewReplyGenerator";
 import LocalDataMigration, { hasLocalData } from "@/components/LocalDataMigration";
 import WeeklyReminder from "@/components/WeeklyReminder";
-import PlanTab from "@/components/PlanTab";
 
-type Tab = "dashboard" | "bulk" | "checklist" | "ranking" | "history" | "plan" | "settings";
+type Tab = "dashboard" | "bulk" | "checklist" | "ranking" | "history" | "settings";
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: "dashboard", label: "ダッシュボード", icon: "📊" },
@@ -38,7 +36,6 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: "checklist", label: "施策チェック", icon: "✅" },
   { key: "ranking", label: "順位チェック", icon: "🔍" },
   { key: "history", label: "履歴", icon: "📜" },
-  { key: "plan", label: "プラン", icon: "💎" },
   { key: "settings", label: "設定", icon: "⚙️" },
 ];
 
@@ -134,16 +131,6 @@ export default function Home() {
     await refreshState();
   };
 
-  const handleKeywordsImport = async (newKeywords: string[]) => {
-    const clinic = clinics.find((c) => c.id === activeClinicId);
-    if (!clinic) return;
-    const existing = new Set(clinic.keywords.map((k) => k.toLowerCase()));
-    const unique = newKeywords.filter((k) => !existing.has(k.toLowerCase()));
-    if (unique.length === 0) return;
-    const updated = [...clinic.keywords, ...unique];
-    await updateClinic(clinic.id, { keywords: updated });
-    await refreshState();
-  };
 
   const hasWordPress = !!(
     profile.wordpress?.siteUrl &&
@@ -435,22 +422,17 @@ export default function Home() {
         {tab === "checklist" && <ChecklistTab />}
 
         {tab === "ranking" && (
-          <div className="space-y-8">
-            <SearchConsolePanel profile={profile} onKeywordsImport={handleKeywordsImport} />
-            <RankingChecker
-              profile={profile}
-              onRegenerateKeyword={(kw) => {
-                setRegenerateKeyword(kw);
-                setContentSubTab("bulk");
-                setTab("bulk");
-              }}
-            />
-          </div>
+          <RankingChecker
+            profile={profile}
+            onRegenerateKeyword={(kw) => {
+              setRegenerateKeyword(kw);
+              setContentSubTab("bulk");
+              setTab("bulk");
+            }}
+          />
         )}
 
         {tab === "history" && <HistoryTab onNavigate={setTab} />}
-
-        {tab === "plan" && <PlanTab />}
 
         {tab === "settings" && (
           <SettingsTab
@@ -590,8 +572,9 @@ function DashboardTab({
   const setupSteps = useMemo(() => {
     if (!activeClinic) return null;
     const steps = [
-      { label: "院情報を登録", done: !!activeClinic.name, action: "settings" as Tab },
-      { label: "キーワードを設定", done: activeClinic.keywords.length > 0, action: "settings" as Tab },
+      { label: "院の強み・特徴を入力", done: !!activeClinic.strengths, action: "settings" as Tab },
+      { label: "得意な施術・専門分野を入力", done: !!activeClinic.specialty, action: "settings" as Tab },
+      { label: "院長の経歴・資格を入力", done: !!activeClinic.experience, action: "settings" as Tab },
       { label: "コンテンツを生成", done: stats.total > 0, action: "bulk" as Tab },
     ];
     const allDone = steps.every(s => s.done);
