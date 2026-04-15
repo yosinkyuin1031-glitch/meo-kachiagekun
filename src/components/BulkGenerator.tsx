@@ -6,6 +6,7 @@ import DOMPurify from "dompurify";
 import { BusinessProfile, GeneratedContent } from "@/lib/types";
 import { saveContent, updateContent, getContentsByKeyword, getContentInsight, getRankingInsight, saveFeedback, GenerationFeedback } from "@/lib/supabase-storage";
 import { checkMedicalGuidelines, GuidelineCheckResult } from "@/lib/medical-guidelines";
+import { formatBlogHtml } from "@/lib/format-blog";
 import {
   blogPostWithFaqPrompt,
   faqIndividualListPrompt,
@@ -684,7 +685,7 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
           const blogPrompt =
             blogPostWithFaqPrompt(profile, keyword, blogTopic, faqContentForBlog, accCtx) +
             ANTI_AI_INSTRUCTION;
-          generatedBlogHtml = await callGenerate(blogPrompt, "blog");
+          generatedBlogHtml = formatBlogHtml(await callGenerate(blogPrompt, "blog"));
           setBlogHtml(generatedBlogHtml);
           setBlogGuidelineCheck(checkMedicalGuidelines(generatedBlogHtml));
 

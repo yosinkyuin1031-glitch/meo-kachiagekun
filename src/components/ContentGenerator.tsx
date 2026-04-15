@@ -6,6 +6,7 @@ import DOMPurify from "dompurify";
 import { BusinessProfile, GeneratedContent } from "@/lib/types";
 import { saveContent, updateContent, getContentInsight, getRankingInsight, saveFeedback, GenerationFeedback } from "@/lib/supabase-storage";
 import { checkMedicalGuidelines, GuidelineCheckResult } from "@/lib/medical-guidelines";
+import { formatBlogHtml } from "@/lib/format-blog";
 import {
   faqPrompt,
   blogPostPrompt,
@@ -238,7 +239,11 @@ export default function ContentGenerator({ profile, type }: Props) {
       clearTimeout(timeoutId);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      const content = data.content as string;
+      let content = data.content as string;
+      // ブログ記事はHTML自動整形（長い段落の分割・改行確保）
+      if (type === "blog") {
+        content = formatBlogHtml(content);
+      }
       setResult(content);
 
       // 医療広告ガイドラインチェック
@@ -578,14 +583,14 @@ export default function ContentGenerator({ profile, type }: Props) {
             <div className="border border-gray-100 rounded-lg p-4 bg-gray-50">
               {type === "blog" ? (
                 <div
-                  className="prose prose-sm max-w-none prose-headings:mt-8 prose-headings:mb-4 prose-p:my-4 prose-p:leading-7 prose-li:my-1 prose-ul:my-4 prose-h2:text-lg prose-h2:border-b prose-h2:border-gray-200 prose-h2:pb-2"
+                  className="prose prose-sm max-w-none prose-headings:mt-10 prose-headings:mb-6 prose-p:my-5 prose-p:leading-8 prose-li:my-1.5 prose-ul:my-5 prose-h2:text-lg prose-h2:border-b prose-h2:border-gray-200 prose-h2:pb-2 prose-h3:mt-8 prose-h3:mb-4"
                   dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(result, {
                     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'a', 'span', 'div'],
                     ALLOWED_ATTR: ['href', 'target', 'rel', 'class']
                   }) }}
                 />
               ) : type === "note" ? (
-                <div className="prose prose-sm max-w-none prose-headings:mt-8 prose-headings:mb-4 prose-p:my-4 prose-p:leading-7 prose-li:my-1 prose-ul:my-4 prose-h2:text-lg prose-h2:border-b prose-h2:border-gray-200 prose-h2:pb-2 prose-blockquote:border-l-orange-400 prose-blockquote:bg-orange-50 prose-blockquote:py-1 prose-blockquote:px-4 prose-strong:text-orange-700 prose-hr:my-6">
+                <div className="prose prose-sm max-w-none prose-headings:mt-10 prose-headings:mb-6 prose-p:my-5 prose-p:leading-8 prose-li:my-1.5 prose-ul:my-5 prose-h2:text-lg prose-h2:border-b prose-h2:border-gray-200 prose-h2:pb-2 prose-h3:mt-8 prose-h3:mb-4 prose-blockquote:border-l-orange-400 prose-blockquote:bg-orange-50 prose-blockquote:py-1 prose-blockquote:px-4 prose-strong:text-orange-700 prose-hr:my-6">
                   <ReactMarkdown>{result}</ReactMarkdown>
                 </div>
               ) : (
