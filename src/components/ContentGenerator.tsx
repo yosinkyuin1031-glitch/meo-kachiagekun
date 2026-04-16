@@ -7,6 +7,7 @@ import { BusinessProfile, GeneratedContent } from "@/lib/types";
 import { saveContent, updateContent, getContentInsight, getRankingInsight, saveFeedback, GenerationFeedback } from "@/lib/supabase-storage";
 import { checkMedicalGuidelines, GuidelineCheckResult } from "@/lib/medical-guidelines";
 import { formatBlogHtml } from "@/lib/format-blog";
+import { buildReviewContext } from "@/lib/review-context";
 import {
   faqPrompt,
   blogPostPrompt,
@@ -20,6 +21,7 @@ import VoiceInput from "./VoiceInput";
 interface Props {
   profile: BusinessProfile;
   type: "faq" | "gbp" | "note" | "blog";
+  clinicId?: string;
 }
 
 interface SeoData {
@@ -97,7 +99,7 @@ function CopyButton({
   );
 }
 
-export default function ContentGenerator({ profile, type }: Props) {
+export default function ContentGenerator({ profile, type, clinicId }: Props) {
   const [keyword, setKeyword] = useState("");
   const [topic, setTopic] = useState("");
   const [gbpPostType, setGbpPostType] = useState("情報発信");
@@ -141,11 +143,12 @@ export default function ContentGenerator({ profile, type }: Props) {
 
   async function buildPrompt(): Promise<string> {
     // 蓄積データを取得してコンテキストに含める
-    const [contentInsight, rankingInsight] = await Promise.all([
+    const [contentInsight, rankingInsight, reviewContext] = await Promise.all([
       getContentInsight(keyword),
       getRankingInsight(keyword),
+      clinicId ? buildReviewContext(clinicId, keyword) : Promise.resolve(""),
     ]);
-    const accCtx: AccumulatedContext = { contentInsight, rankingInsight };
+    const accCtx: AccumulatedContext = { contentInsight, rankingInsight, reviewContext };
 
     let prompt = "";
     switch (type) {

@@ -5,11 +5,17 @@ import { ContentInsight, RankingInsight } from "./supabase-storage";
 export interface AccumulatedContext {
   contentInsight?: ContentInsight;
   rankingInsight?: RankingInsight;
+  reviewContext?: string; // キーワードに応じて抽出された口コミコンテキスト
 }
 
 function buildAccumulatedContext(ctx?: AccumulatedContext): string {
   if (!ctx) return "";
   const sections: string[] = [];
+
+  // Google口コミから抽出したコンテキスト（キーワード関連の患者の声）
+  if (ctx.reviewContext) {
+    sections.push(`\n${ctx.reviewContext}\n\n※ 上記の口コミは実際にGoogle Mapsに投稿された患者様の声です。記事内に「患者様からは○○という声をいただいています」「ある50代女性は○回の施術で○○を実感されました」のような形で自然に引用し、数字や具体的な変化を交えてリアリティを持たせてください。引用する際は、口コミの文言をそのまま使うのではなく、本文の流れに自然に溶け込ませてください。`);
+  }
 
   // 過去記事の重複回避
   const ci = ctx.contentInsight;

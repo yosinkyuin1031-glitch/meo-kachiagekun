@@ -408,14 +408,14 @@ export default function Home() {
             </div>
 
             <div style={{ display: contentSubTab === "bulk" ? "block" : "none" }}>
-              <BulkGenerator profile={profile} initialKeyword={regenerateKeyword} onKeywordConsumed={() => setRegenerateKeyword("")} />
+              <BulkGenerator profile={profile} initialKeyword={regenerateKeyword} onKeywordConsumed={() => setRegenerateKeyword("")} clinicId={activeClinicId} />
             </div>
-            {contentSubTab === "faq" && <ContentGenerator profile={profile} type="faq" />}
-            {contentSubTab === "blog" && <ContentGenerator profile={profile} type="blog" />}
-            {contentSubTab === "gbp" && <ContentGenerator profile={profile} type="gbp" />}
+            {contentSubTab === "faq" && <ContentGenerator profile={profile} type="faq" clinicId={activeClinicId} />}
+            {contentSubTab === "blog" && <ContentGenerator profile={profile} type="blog" clinicId={activeClinicId} />}
+            {contentSubTab === "gbp" && <ContentGenerator profile={profile} type="gbp" clinicId={activeClinicId} />}
             {contentSubTab === "review" && <ReviewReplyGenerator profile={profile} />}
             {contentSubTab === "image" && <GbpImageGenerator profile={profile} />}
-            {contentSubTab === "note" && <ContentGenerator profile={profile} type="note" />}
+            {contentSubTab === "note" && <ContentGenerator profile={profile} type="note" clinicId={activeClinicId} />}
           </div>
         )}
 

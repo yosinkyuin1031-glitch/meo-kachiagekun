@@ -193,6 +193,7 @@ export default function SettingsTab({
               {editingId === clinic.id ? (
                 <ClinicEditForm
                   clinic={clinic}
+                  anthropicKey={anthropicKey}
                   onSave={async (updates) => {
                     try {
                       await onUpdateClinic(clinic.id, updates);
@@ -286,6 +287,7 @@ export default function SettingsTab({
           <div className="mt-4">
             <ClinicEditForm
               clinic={null}
+              anthropicKey={anthropicKey}
               onSave={async (data) => {
                 const newClinic: ClinicProfile = {
                   id: `clinic-${Date.now()}`,
@@ -356,10 +358,12 @@ function ClinicEditForm({
   clinic,
   onSave,
   onCancel,
+  anthropicKey,
 }: {
   clinic: ClinicProfile | null;
   onSave: (data: Partial<ClinicProfile>) => Promise<void> | void;
   onCancel: () => void;
+  anthropicKey?: string;
 }) {
   const [copiedKw, setCopiedKw] = useState<string | null>(null);
   const [keywordError, setKeywordError] = useState("");
@@ -382,6 +386,49 @@ function ClinicEditForm({
   const [strengths, setStrengths] = useState(clinic?.strengths || "");
   const [experience, setExperience] = useState(clinic?.experience || "");
   const [reviews, setReviews] = useState(clinic?.reviews || "");
+
+  // Google口コミ自動取得
+  const [reviewMaxCount, setReviewMaxCount] = useState(30);
+  const [fetchingReviews, setFetchingReviews] = useState(false);
+  const [reviewFetchResult, setReviewFetchResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  async function handleFetchReviews() {
+    if (!name || !area) {
+      setReviewFetchResult({ success: false, message: "院名・エリアを先に保存してください" });
+      return;
+    }
+    if (!anthropicKey) {
+      setReviewFetchResult({ success: false, message: "Anthropic APIキーが設定されていません" });
+      return;
+    }
+    if (!confirm(`Google口コミを最大${reviewMaxCount}件取得します。\nSerpApiとAnthropic APIの利用料が発生します（合計約20〜35円）。\n月4回まで取得可能です。\n実行しますか？`)) return;
+
+    setFetchingReviews(true);
+    setReviewFetchResult(null);
+    try {
+      const res = await fetch("/api/fetch-reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clinicId: clinic?.id,
+          businessName: name,
+          area,
+          maxCount: reviewMaxCount,
+          anthropicKey,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "取得に失敗しました");
+      setReviewFetchResult({
+        success: true,
+        message: `口コミ${data.reviewCount}件を取得し、AIで要約しました（平均★${data.avgRating?.toFixed(1)}）。記事生成時に自動で反映されます。`,
+      });
+    } catch (e) {
+      setReviewFetchResult({ success: false, message: e instanceof Error ? e.message : "取得に失敗しました" });
+    } finally {
+      setFetchingReviews(false);
+    }
+  }
 
   const CATEGORY_OPTIONS = [
     "整体院", "鍼灸院", "整骨院", "接骨院",
@@ -716,7 +763,48 @@ function ClinicEditForm({
         <textarea value={reviews} onChange={(e) => setReviews(e.target.value)} rows={4}
           placeholder={"例：\n「どこに行っても変わらなかった腰痛が3回で楽になりました」（60代女性）\n「丁寧な説明で安心して施術を受けられました」（40代男性）\n「長年の頭痛が嘘のように改善」（30代女性）"}
           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
-        <p className="text-xs text-gray-400 mt-0.5">Googleマップの口コミから代表的なものを入力すると、記事の信頼性が向上します</p>
+        <p className="text-xs text-gray-400 mt-0.5">手動入力した口コミは、記事生成時の補足として使われます</p>
+      </div>
+
+      {/* Google口コミ自動取得 */}
+      <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xl">🔍</span>
+          <h3 className="text-sm font-bold text-gray-800">Google口コミの自動取得（おすすめ）</h3>
+        </div>
+        <p className="text-xs text-gray-600 mb-3 leading-relaxed">
+          Googleマップに投稿されている口コミを自動で取得し、AIで要約します。<br />
+          記事生成時、症状キーワードに合わせて関連する口コミだけが自動でプロンプトに反映されます。
+        </p>
+        <div className="flex items-center gap-3 mb-3">
+          <label className="text-xs font-medium text-gray-600">取得件数：</label>
+          <select
+            value={reviewMaxCount}
+            onChange={(e) => setReviewMaxCount(parseInt(e.target.value))}
+            className="px-2 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={fetchingReviews}
+          >
+            <option value={30}>30件（標準）</option>
+            <option value={50}>50件</option>
+            <option value={100}>100件（大量）</option>
+          </select>
+          <button
+            onClick={handleFetchReviews}
+            disabled={fetchingReviews}
+            className="ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-xs font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          >
+            {fetchingReviews ? "取得中..." : "Google口コミを取得"}
+          </button>
+        </div>
+        {reviewFetchResult && (
+          <div className={`text-xs p-2 rounded ${reviewFetchResult.success ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+            {reviewFetchResult.message}
+          </div>
+        )}
+        <p className="text-xs text-gray-400 mt-2">
+          ※ 月4回まで取得可能。1回の取得で約20〜35円のAPI利用料が発生します。<br />
+          ※ 取得した口コミはAIで要約され、症状別にタグ付けされます。
+        </p>
       </div>
 
       {/* 症状キーワード */}

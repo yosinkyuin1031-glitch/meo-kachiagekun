@@ -7,6 +7,7 @@ import { BusinessProfile, GeneratedContent } from "@/lib/types";
 import { saveContent, updateContent, getContentsByKeyword, getContentInsight, getRankingInsight, saveFeedback, GenerationFeedback } from "@/lib/supabase-storage";
 import { checkMedicalGuidelines, GuidelineCheckResult } from "@/lib/medical-guidelines";
 import { formatBlogHtml } from "@/lib/format-blog";
+import { buildReviewContext } from "@/lib/review-context";
 import {
   blogPostWithFaqPrompt,
   faqIndividualListPrompt,
@@ -21,6 +22,7 @@ interface Props {
   profile: BusinessProfile;
   initialKeyword?: string;
   onKeywordConsumed?: () => void;
+  clinicId?: string;
 }
 
 // Anti-AI writing instruction
@@ -281,7 +283,7 @@ function Accordion({
 }
 
 // ---------- Main Component ----------
-export default function BulkGenerator({ profile, initialKeyword, onKeywordConsumed }: Props) {
+export default function BulkGenerator({ profile, initialKeyword, onKeywordConsumed, clinicId }: Props) {
   const [keyword, setKeyword] = useState("");
   const [topic, setTopic] = useState("");
   const [faqCount, setFaqCount] = useState(5);
@@ -512,12 +514,13 @@ export default function BulkGenerator({ profile, initialKeyword, onKeywordConsum
     let generatedBlogHtml = "";
     let blogUrl = "";
 
-    // 蓄積データを取得（順位変動・フィードバック・過去記事）
-    const [contentInsight, rankingInsight] = await Promise.all([
+    // 蓄積データを取得（順位変動・フィードバック・過去記事・口コミコンテキスト）
+    const [contentInsight, rankingInsight, reviewContext] = await Promise.all([
       getContentInsight(keyword),
       getRankingInsight(keyword),
+      clinicId ? buildReviewContext(clinicId, keyword) : Promise.resolve(""),
     ]);
-    const accCtx: AccumulatedContext = { contentInsight, rankingInsight };
+    const accCtx: AccumulatedContext = { contentInsight, rankingInsight, reviewContext };
 
     // 生成ステップ数を計算
     const totalSteps = [
