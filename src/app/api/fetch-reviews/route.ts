@@ -126,6 +126,24 @@ ${reviewsText}
   return JSON.parse(jsonMatch[0]);
 }
 
+// APIキーを取得：環境変数 → DB → の順（generate/route.tsと同じ方式）
+async function resolveAnthropicKey(userId?: string): Promise<string> {
+  const envKey = process.env.ANTHROPIC_API_KEY;
+  if (envKey && envKey.trim().length > 50) return envKey.trim();
+  if (userId) {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("meo_user_settings")
+      .select("anthropic_key")
+      .eq("user_id", userId)
+      .single();
+    if (data?.anthropic_key && data.anthropic_key.trim().length > 50) {
+      return data.anthropic_key.trim();
+    }
+  }
+  return "";
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -143,9 +161,12 @@ export async function POST(request: NextRequest) {
     const limit = Math.min(Math.max(parseInt(maxCount) || 30, 10), 100);
 
     const serpApiKey = process.env.SERPAPI_KEY;
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    if (!serpApiKey || !anthropicKey) {
+    if (!serpApiKey) {
       return NextResponse.json({ error: "システムのAPIキーが設定されていません。管理者に連絡してください。" }, { status: 500 });
+    }
+    const anthropicKey = await resolveAnthropicKey(user.id);
+    if (!anthropicKey) {
+      return NextResponse.json({ error: "AIのAPIキーが設定されていません。管理者に連絡してください。" }, { status: 500 });
     }
 
     // 月間取得回数チェック（4回まで）
