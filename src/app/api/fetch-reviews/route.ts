@@ -75,7 +75,7 @@ async function fetchReviews(dataId: string, apiKey: string, maxCount: number): P
 }
 
 /**
- * AIで口コミを要約・タグ付け
+ * AIで口コミを要約・タグ付け（tool_useで構造化出力を強制）
  */
 async function summarizeReviews(reviews: SerpReview[], anthropicKey: string): Promise<{
   summaryOverall: string;
@@ -89,54 +89,66 @@ async function summarizeReviews(reviews: SerpReview[], anthropicKey: string): Pr
     .map((r, i) => `[${i + 1}] ★${r.rating || "?"} ${r.snippet}`)
     .join("\n");
 
-  const prompt = `以下は治療院のGoogle口コミです。これらを分析して、記事生成のコンテキストとして使える形に要約してください。
+  const tool = {
+    name: "save_review_summary" as const,
+    description: "口コミの要約結果を保存する",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        summaryOverall: { type: "string" as const, description: "全体的な傾向を200文字程度で要約" },
+        symptomTags: {
+          type: "object" as const,
+          description: "症状名をキー、改善エピソードの配列を値とするオブジェクト",
+          additionalProperties: { type: "array" as const, items: { type: "string" as const } },
+        },
+        representativeReviews: {
+          type: "array" as const,
+          items: {
+            type: "object" as const,
+            properties: {
+              text: { type: "string" as const, description: "口コミ本文" },
+              rating: { type: "number" as const, description: "評価（1-5）" },
+              pattern: { type: "string" as const, description: "症状名や特徴" },
+            },
+            required: ["text", "rating", "pattern"],
+          },
+        },
+      },
+      required: ["summaryOverall", "symptomTags", "representativeReviews"],
+    },
+  };
+
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 4000,
+    tools: [tool],
+    tool_choice: { type: "tool", name: "save_review_summary" },
+    messages: [{
+      role: "user",
+      content: `以下は治療院のGoogle口コミです。分析して save_review_summary ツールで結果を保存してください。
 
 【口コミ一覧】
 ${reviewsText}
-
-【出力するJSON形式】
-{
-  "summaryOverall": "全体的な傾向を200文字程度で要約",
-  "symptomTags": {
-    "腰痛": ["改善エピソードの要約1", "改善エピソードの要約2"],
-    "肩こり": ["..."],
-    "頭痛": ["..."]
-  },
-  "representativeReviews": [
-    { "text": "象徴的な口コミ本文", "rating": 5, "pattern": "症状名や特徴" }
-  ]
-}
 
 【ルール】
 - symptomTagsは口コミに登場する症状名でタグ付け（腰痛・肩こり・頭痛・自律神経・骨盤・姿勢など）
 - 各症状ごとに、口コミから抽出した具体的な改善エピソードや患者の声を3〜5個まとめる
 - 数字（回数・期間・年代）は必ず保持する
-- representativeReviewsには、特に説得力のある具体的な口コミを8〜12件選ぶ
-- JSON以外の文字は一切出力しないこと`;
-
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4000,
-    messages: [{ role: "user", content: prompt }],
+- representativeReviewsには、特に説得力のある具体的な口コミを8〜12件選ぶ`,
+    }],
   });
 
-  const text = message.content[0].type === "text" ? message.content[0].text : "";
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("AI summarization failed: invalid JSON response");
-
-  // JSONの修正: トレーリングカンマ除去、不正な文字の修正
-  let jsonStr = jsonMatch[0];
-  jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1"); // trailing commas
-  jsonStr = jsonStr.replace(/[\x00-\x1F\x7F]/g, (ch) => ch === "\n" || ch === "\r" || ch === "\t" ? ch : ""); // control chars
-
-  try {
-    return JSON.parse(jsonStr);
-  } catch {
-    // 最後の手段: 各行を修正してリトライ
-    jsonStr = jsonStr.replace(/"\s*\n\s*"/g, '", "'); // 改行で分断された文字列を修正
-    jsonStr = jsonStr.replace(/,\s*,/g, ","); // ダブルカンマ除去
-    return JSON.parse(jsonStr);
+  const toolBlock = message.content.find((b) => b.type === "tool_use");
+  if (!toolBlock || toolBlock.type !== "tool_use") {
+    throw new Error("AI summarization failed: no tool_use response");
   }
+
+  const input = toolBlock.input as {
+    summaryOverall: string;
+    symptomTags: Record<string, string[]>;
+    representativeReviews: { text: string; rating: number; pattern: string }[];
+  };
+  return input;
 }
 
 // APIキーを取得：環境変数 → DB → の順（generate/route.tsと同じ方式）
