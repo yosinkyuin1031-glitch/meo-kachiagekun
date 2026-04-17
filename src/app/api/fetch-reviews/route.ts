@@ -162,11 +162,13 @@ export async function POST(request: NextRequest) {
 
     const serpApiKey = process.env.SERPAPI_KEY;
     if (!serpApiKey) {
-      return NextResponse.json({ error: "システムのAPIキーが設定されていません。管理者に連絡してください。" }, { status: 500 });
+      console.error("SERPAPI_KEY not found in env. Available keys:", Object.keys(process.env).filter(k => k.includes("SERP") || k.includes("API")).join(", "));
+      return NextResponse.json({ error: `システムのAPIキーが設定されていません（SERP: ${!!serpApiKey}）。管理者に連絡してください。` }, { status: 500 });
     }
     const anthropicKey = await resolveAnthropicKey(user.id);
     if (!anthropicKey) {
-      return NextResponse.json({ error: "AIのAPIキーが設定されていません。管理者に連絡してください。" }, { status: 500 });
+      console.error("Anthropic key not found. env:", !!process.env.ANTHROPIC_API_KEY);
+      return NextResponse.json({ error: `AIのAPIキーが設定されていません（ENV: ${!!process.env.ANTHROPIC_API_KEY}）。管理者に連絡してください。` }, { status: 500 });
     }
 
     // 月間取得回数チェック（4回まで）
