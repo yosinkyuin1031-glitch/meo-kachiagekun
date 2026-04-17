@@ -957,11 +957,13 @@ function ClinicEditForm({
             {savedSummary && (
               <div className="px-4 py-3 bg-gray-50">
                 <p className="text-xs text-gray-600 leading-relaxed mb-2">{savedSummary.summaryOverall}</p>
-                <div className="flex flex-wrap gap-1">
-                  {Object.keys(savedSummary.symptomTags).map((tag) => (
-                    <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px]">{tag}（{savedSummary.symptomTags[tag].length}）</span>
-                  ))}
-                </div>
+                {savedSummary.symptomTags && typeof savedSummary.symptomTags === "object" && (
+                  <div className="flex flex-wrap gap-1">
+                    {Object.keys(savedSummary.symptomTags).map((tag) => (
+                      <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px]">{tag}（{Array.isArray(savedSummary.symptomTags[tag]) ? savedSummary.symptomTags[tag].length : 0}）</span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -978,7 +980,7 @@ function ClinicEditForm({
                   {savedReviews.map((r, i) => (
                     <div key={i} className="bg-gray-50 rounded-lg p-2.5 text-xs">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-yellow-500 text-[11px]">{"★".repeat(r.rating)}{"☆".repeat(Math.max(0, 5 - r.rating))}</span>
+                        <span className="text-yellow-500 text-[11px]">{"★".repeat(Math.max(0, Math.min(5, r.rating || 0)))}{"☆".repeat(Math.max(0, 5 - Math.max(0, Math.min(5, r.rating || 0))))}</span>
                         <span className="text-gray-500 font-medium">{r.author}</span>
                         {r.date && <span className="text-gray-400 ml-auto">{r.date}</span>}
                       </div>
