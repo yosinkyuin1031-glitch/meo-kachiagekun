@@ -425,7 +425,7 @@ function ClinicEditForm({
   // Google口コミ自動取得
   const [reviewMaxCount, setReviewMaxCount] = useState(30);
   const [fetchingReviews, setFetchingReviews] = useState(false);
-  const [reviewFetchResult, setReviewFetchResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [reviewFetchResult, setReviewFetchResult] = useState<{ success: boolean; message: string; summary?: { summaryOverall: string; symptomTags: Record<string, string[]>; representativeReviews: { text: string; rating: number; pattern: string }[] } } | null>(null);
 
   async function handleFetchReviews() {
     if (!name || !area) {
@@ -449,9 +449,19 @@ function ClinicEditForm({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "取得に失敗しました");
+
+      // 代表的な口コミをテキストエリアに自動反映
+      if (data.summary?.representativeReviews?.length > 0) {
+        const reviewLines = data.summary.representativeReviews
+          .map((r: { text: string; rating: number; pattern: string }) => `「${r.text}」（${r.pattern}・★${r.rating}）`)
+          .join("\n");
+        setReviews(reviewLines);
+      }
+
       setReviewFetchResult({
         success: true,
-        message: `口コミ${data.reviewCount}件を取得し、AIで要約しました（平均★${data.avgRating?.toFixed(1)}）。記事生成時に自動で反映されます。`,
+        message: `口コミ${data.reviewCount}件を取得し、AIで要約しました（平均★${data.avgRating?.toFixed(1)}）`,
+        summary: data.summary,
       });
     } catch (e) {
       setReviewFetchResult({ success: false, message: e instanceof Error ? e.message : "取得に失敗しました" });
@@ -912,6 +922,22 @@ function ClinicEditForm({
         {reviewFetchResult && (
           <div className={`text-xs p-2 rounded ${reviewFetchResult.success ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
             {reviewFetchResult.message}
+          </div>
+        )}
+        {reviewFetchResult?.summary && (
+          <div className="mt-3 space-y-2">
+            <div className="bg-white border border-gray-200 rounded-lg p-3">
+              <h4 className="text-xs font-bold text-gray-700 mb-1">全体の傾向</h4>
+              <p className="text-xs text-gray-600 leading-relaxed">{reviewFetchResult.summary.summaryOverall}</p>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg p-3">
+              <h4 className="text-xs font-bold text-gray-700 mb-1">症状別タグ</h4>
+              <div className="flex flex-wrap gap-1">
+                {Object.keys(reviewFetchResult.summary.symptomTags).map((tag) => (
+                  <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs">{tag}（{reviewFetchResult.summary!.symptomTags[tag].length}件）</span>
+                ))}
+              </div>
+            </div>
           </div>
         )}
         <p className="text-xs text-gray-400 mt-2">
