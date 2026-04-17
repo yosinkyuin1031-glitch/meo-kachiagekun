@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ClinicProfile, WordPressSettings, NoteProfile } from "@/lib/types";
+import { ClinicProfile, WordPressSettings, NoteProfile, OwnerVoice } from "@/lib/types";
+import VoiceInput from "./VoiceInput";
 import { getClinics, getContents, getRankingHistory, getChecklist } from "@/lib/supabase-storage";
 import { ConfirmDialog, useConfirmDialog } from "./ConfirmDialog";
 import { useToast } from "./Toast";
@@ -354,6 +355,32 @@ export default function SettingsTab({
 }
 
 // ─── 院の編集フォーム ─────────────────────────
+// 質問＋音声入力の統合テキストエリア
+function VoiceTextArea({ label, hint, value, onChange, placeholder }: {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-1">
+        <label className="block text-xs font-bold text-gray-700">{label}</label>
+        <VoiceInput onResult={(text) => onChange(value ? value + "\n" + text : text)} placeholder="話した内容が追加されます" />
+      </div>
+      <p className="text-xs text-gray-400 mb-1">{hint}</p>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+      />
+    </div>
+  );
+}
+
 function ClinicEditForm({
   clinic,
   onSave,
@@ -386,6 +413,14 @@ function ClinicEditForm({
   const [strengths, setStrengths] = useState(clinic?.strengths || "");
   const [experience, setExperience] = useState(clinic?.experience || "");
   const [reviews, setReviews] = useState(clinic?.reviews || "");
+
+  // 院長の声
+  const [ownerPhilosophy, setOwnerPhilosophy] = useState(clinic?.ownerVoice?.philosophy || "");
+  const [ownerPassion, setOwnerPassion] = useState(clinic?.ownerVoice?.passion || "");
+  const [ownerApproach, setOwnerApproach] = useState(clinic?.ownerVoice?.approach || "");
+  const [ownerDifference, setOwnerDifference] = useState(clinic?.ownerVoice?.difference || "");
+  const [ownerOrigin, setOwnerOrigin] = useState(clinic?.ownerVoice?.origin || "");
+  const [writingSamples, setWritingSamples] = useState(clinic?.ownerVoice?.writingSamples || "");
 
   // Google口コミ自動取得
   const [reviewMaxCount, setReviewMaxCount] = useState(30);
@@ -555,7 +590,18 @@ function ClinicEditForm({
     const categories = selectedCategories.length > 0 ? selectedCategories : ["整体院"];
     const category = categories.join("・");
 
-    await onSave({ name, area, nearestStation: nearestStation || undefined, coverageAreas: coverageAreasText ? coverageAreasText.split(",").map(a => a.trim()).filter(Boolean) : undefined, category, categories, description, ownerName, specialty, keywords, urls, wordpress, noteProfile, strengths: strengths || undefined, experience: experience || undefined, reviews: reviews || undefined });
+    const ownerVoice: OwnerVoice | undefined = (ownerPhilosophy || ownerPassion || ownerApproach || ownerDifference || ownerOrigin || writingSamples)
+      ? {
+          philosophy: ownerPhilosophy || undefined,
+          passion: ownerPassion || undefined,
+          approach: ownerApproach || undefined,
+          difference: ownerDifference || undefined,
+          origin: ownerOrigin || undefined,
+          writingSamples: writingSamples || undefined,
+        }
+      : undefined;
+
+    await onSave({ name, area, nearestStation: nearestStation || undefined, coverageAreas: coverageAreasText ? coverageAreasText.split(",").map(a => a.trim()).filter(Boolean) : undefined, category, categories, description, ownerName, specialty, keywords, urls, wordpress, noteProfile, strengths: strengths || undefined, experience: experience || undefined, reviews: reviews || undefined, ownerVoice });
   };
 
   const testWordPress = async () => {
@@ -738,6 +784,78 @@ function ClinicEditForm({
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
           placeholder="例：渋谷区で肩こり・腰痛を専門にしている整体院"
           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+      </div>
+
+      {/* ──── 院長の声セクション ──── */}
+      <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xl">🎙️</span>
+          <div>
+            <h3 className="text-sm font-bold text-gray-800">院長の声</h3>
+            <p className="text-xs text-gray-500">マイクボタンで話すだけ。先生の言葉がそのまま記事に反映されます</p>
+          </div>
+        </div>
+
+        {/* Q1: 治療哲学 */}
+        <VoiceTextArea
+          label="なぜこの仕事をしていますか？"
+          hint="治療を通じて実現したいこと、大事にしている考え方を教えてください"
+          value={ownerPhilosophy}
+          onChange={setOwnerPhilosophy}
+          placeholder="例：「痛みを取るだけじゃなく、患者さんが自分の体に自信を持てるようにしたいんです。だから原因をしっかり説明して…」"
+        />
+
+        {/* Q2: 患者への想い */}
+        <VoiceTextArea
+          label="患者さんにどうなってほしいですか？"
+          hint="施術後、どんな生活を送ってほしいか"
+          value={ownerPassion}
+          onChange={setOwnerPassion}
+          placeholder="例：「朝起きた時に『今日も体が軽い』って思える毎日を送ってほしい。そのために…」"
+        />
+
+        {/* Q3: 施術のこだわり */}
+        <VoiceTextArea
+          label="治療で一番大事にしていることは？"
+          hint="他の先生と違うこだわり、絶対に譲れないポイント"
+          value={ownerApproach}
+          onChange={setOwnerApproach}
+          placeholder="例：「初回のカウンセリングに30分かけるのは、痛みの本当の原因を見つけるため。表面的な施術はしたくないんです」"
+        />
+
+        {/* Q4: 他院との違い */}
+        <VoiceTextArea
+          label="他の院と何が違いますか？"
+          hint="自分だけの考え方・やり方"
+          value={ownerDifference}
+          onChange={setOwnerDifference}
+          placeholder="例：「うちは筋肉じゃなくて神経にアプローチする。なぜかというと…」"
+        />
+
+        {/* Q5: 開業の原点 */}
+        <VoiceTextArea
+          label="この道を選んだきっかけは？"
+          hint="治療家を目指した理由、開業を決意したエピソード"
+          value={ownerOrigin}
+          onChange={setOwnerOrigin}
+          placeholder="例：「学生時代にケガをして、治してくれた先生に憧れて…」"
+        />
+
+        {/* 文体サンプル */}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <label className="block text-xs font-medium text-gray-600">普段書いている文章（FB投稿やLINEメッセージなど）</label>
+            <VoiceInput onResult={(text) => setWritingSamples((prev) => prev ? prev + "\n" + text : text)} placeholder="話した内容が追加されます" />
+          </div>
+          <textarea
+            value={writingSamples}
+            onChange={(e) => setWritingSamples(e.target.value)}
+            rows={5}
+            placeholder="実際に書いたFacebook投稿やLINEメッセージを2〜3個貼り付けてください。AIがこの口調を真似して記事を作ります。"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+          />
+          <p className="text-xs text-gray-400 mt-0.5">AIが先生の口調・言い回しを学習します。多いほど精度が上がります</p>
+        </div>
       </div>
 
       {/* 院の強み */}

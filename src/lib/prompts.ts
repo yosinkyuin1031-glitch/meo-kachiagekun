@@ -157,8 +157,44 @@ function buildOwnerInfo(profile: BusinessProfile): string {
   return parts.length > 0 ? "\n" + parts.join("\n") : "";
 }
 
+function buildOwnerVoiceContext(profile: BusinessProfile): string {
+  const ov = profile.ownerVoice;
+  if (!ov) return "";
+  const parts: string[] = [];
+  if (ov.philosophy) parts.push(`【治療哲学】\n${ov.philosophy}`);
+  if (ov.passion) parts.push(`【患者への想い】\n${ov.passion}`);
+  if (ov.approach) parts.push(`【施術のこだわり】\n${ov.approach}`);
+  if (ov.difference) parts.push(`【他院との違い】\n${ov.difference}`);
+  if (ov.origin) parts.push(`【この道を選んだきっかけ】\n${ov.origin}`);
+  if (parts.length === 0) return "";
+  return `
+【院長の声（最重要：このセクションが記事のトーンと内容の核です）】
+以下は院長本人が語った言葉です。記事を書く際はこの想い・考え方を軸にしてください。
+院長の言葉づかいや表現をそのまま活かし、「院長が自分で書いた記事」になるようにしてください。
+
+${parts.join("\n\n")}`;
+}
+
+function buildWritingSampleContext(profile: BusinessProfile): string {
+  const ov = profile.ownerVoice;
+  if (!ov?.writingSamples) return "";
+  return `
+【文体サンプル（院長が実際に書いた文章）】
+以下の文章は院長本人が書いたものです。この文体・口調・言い回しを真似て記事を書いてください。
+- 「です・ます」の使い方、語尾のクセを踏襲する
+- 患者への語りかけ方を真似る
+- 専門用語の使い方・砕け具合を合わせる
+
+${ov.writingSamples}`;
+}
+
 function buildClinicContext(profile: BusinessProfile): string {
   const sections = [];
+  // 院長の声（最優先コンテキスト）
+  const ownerVoice = buildOwnerVoiceContext(profile);
+  if (ownerVoice) sections.push(ownerVoice);
+  const writingSample = buildWritingSampleContext(profile);
+  if (writingSample) sections.push(writingSample);
   if (profile.strengths) {
     sections.push(`\n【院の強み・差別化ポイント】\n${profile.strengths}`);
   }
@@ -171,11 +207,13 @@ function buildClinicContext(profile: BusinessProfile): string {
   if (sections.length > 0) {
     return "\n" + sections.join("\n") + `
 
-※ 上記の強み・実績・口コミの活用ルール：
+※ 上記の活用ルール：
+- 院長の声がある場合、それが記事全体のトーン・方向性の最上位指針となる
 - 強みは箇条書きの引用ではなく、具体的なエピソードやストーリーとして展開すること
 - 例：「当院では○○という技術を用いており〜」ではなく「ある患者様は○○の症状で来院され、○○のアプローチにより○回の施術で○○を実感されました」のように患者の体験談のような形で文中に織り込む
 - 口コミは「患者様からは〜という声をいただいています」等の形で自然に引用する
-- 数字や具体的な変化を交えてリアリティを持たせる`;
+- 数字や具体的な変化を交えてリアリティを持たせる
+- 文体サンプルがある場合、その口調・言い回しを最優先で踏襲する`;
   }
   return "";
 }

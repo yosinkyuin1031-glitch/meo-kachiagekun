@@ -83,6 +83,7 @@ function dbClinicToProfile(row: Record<string, unknown>): ClinicProfile {
     reviews: (row.reviews as string) || undefined,
     nearestStation: (row.nearest_station as string) || undefined,
     coverageAreas: (row.coverage_areas as string[]) || undefined,
+    ownerVoice: row.owner_voice && Object.keys(row.owner_voice as object).length > 0 ? row.owner_voice as ClinicProfile["ownerVoice"] : undefined,
   };
 }
 
@@ -110,6 +111,7 @@ export async function saveClinics(clinics: ClinicProfile[]): Promise<void> {
     reviews: c.reviews || "",
     nearest_station: c.nearestStation || "",
     coverage_areas: c.coverageAreas || [],
+    owner_voice: c.ownerVoice || {},
   }));
   await supabase().from("meo_clinics").insert(rows);
 }
@@ -135,6 +137,7 @@ export async function addClinic(clinic: ClinicProfile): Promise<void> {
     reviews: clinic.reviews || "",
     nearest_station: clinic.nearestStation || "",
     coverage_areas: clinic.coverageAreas || [],
+    owner_voice: clinic.ownerVoice || {},
   });
   if (error) {
     console.error("院の追加に失敗:", error);
@@ -161,6 +164,7 @@ export async function updateClinic(id: string, updates: Partial<ClinicProfile>):
   if (updates.reviews !== undefined) dbUpdates.reviews = updates.reviews;
   if (updates.nearestStation !== undefined) dbUpdates.nearest_station = updates.nearestStation;
   if (updates.coverageAreas !== undefined) dbUpdates.coverage_areas = updates.coverageAreas;
+  if (updates.ownerVoice !== undefined) dbUpdates.owner_voice = updates.ownerVoice || {};
 
   const { error } = await supabase()
     .from("meo_clinics")

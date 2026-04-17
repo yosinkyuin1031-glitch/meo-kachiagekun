@@ -69,3 +69,6 @@ CREATE POLICY "meo_review_fetch_log_select" ON meo_review_fetch_log
 CREATE POLICY "meo_review_fetch_log_insert" ON meo_review_fetch_log
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE INDEX IF NOT EXISTS idx_meo_fetch_log_user ON meo_review_fetch_log(user_id, fetched_at);
+
+-- ── 院長の声カラム追加 ─────────────────────────
+ALTER TABLE meo_clinics ADD COLUMN IF NOT EXISTS owner_voice JSONB DEFAULT '{}'::jsonb;
