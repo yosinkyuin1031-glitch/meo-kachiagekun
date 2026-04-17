@@ -422,26 +422,47 @@ function ClinicEditForm({
   const [ownerOrigin, setOwnerOrigin] = useState(clinic?.ownerVoice?.origin || "");
   const [writingSamples, setWritingSamples] = useState(clinic?.ownerVoice?.writingSamples || "");
 
-  // Google口コミ自動取得
-  const [reviewMaxCount, setReviewMaxCount] = useState(30);
+  // Google口コミ
   const [fetchingReviews, setFetchingReviews] = useState(false);
-  const [reviewFetchResult, setReviewFetchResult] = useState<{
-    success: boolean;
-    message: string;
-    summary?: { summaryOverall: string; symptomTags: Record<string, string[]>; representativeReviews: { text: string; rating: number; pattern: string }[] };
-    allReviews?: { author: string; rating: number; text: string; date: string }[];
-  } | null>(null);
+  const [savedReviews, setSavedReviews] = useState<{ author: string; rating: number; text: string; date: string }[]>([]);
+  const [savedSummary, setSavedSummary] = useState<{ summaryOverall: string; symptomTags: Record<string, string[]>; representativeReviews: { text: string; rating: number; pattern: string }[] } | null>(null);
+  const [reviewsUpdatedAt, setReviewsUpdatedAt] = useState<string | null>(null);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(true);
+
+  // ページ表示時にDB保存済み口コミを自動読み込み
+  useEffect(() => {
+    if (!clinic?.id) { setReviewLoading(false); return; }
+    (async () => {
+      try {
+        const res = await fetch(`/api/fetch-reviews?clinicId=${clinic.id}`);
+        const data = await res.json();
+        if (res.ok && data.allReviews?.length > 0) {
+          setSavedReviews(data.allReviews);
+          setSavedSummary(data.summary);
+          setReviewsUpdatedAt(data.updatedAt);
+          // 代表的な口コミをテキストエリアに自動反映
+          if (data.summary?.representativeReviews?.length > 0 && !reviews.trim()) {
+            const lines = data.summary.representativeReviews
+              .map((r: { text: string; rating: number; pattern: string }) => `「${r.text}」（${r.pattern}・★${r.rating}）`);
+            setReviews(lines.join("\n"));
+          }
+        }
+      } catch { /* silent */ }
+      setReviewLoading(false);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clinic?.id]);
 
   async function handleFetchReviews() {
     if (!name || !area) {
-      setReviewFetchResult({ success: false, message: "院名・エリアを先に保存してください" });
+      setReviewError("院名・エリアを先に保存してください");
       return;
     }
-    if (!confirm(`Google口コミを最大${reviewMaxCount}件取得します。\n月4回まで取得可能です。\n実行しますか？`)) return;
 
     setFetchingReviews(true);
-    setReviewFetchResult(null);
+    setReviewError(null);
     try {
       const res = await fetch("/api/fetch-reviews", {
         method: "POST",
@@ -450,13 +471,17 @@ function ClinicEditForm({
           clinicId: clinic?.id,
           businessName: name,
           area,
-          maxCount: reviewMaxCount,
+          maxCount: 50,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "取得に失敗しました");
 
-      // 代表的な口コミをテキストエリアに自動反映（既存の手動入力は保持して末尾に追加）
+      setSavedReviews(data.allReviews || []);
+      setSavedSummary(data.summary);
+      setReviewsUpdatedAt(new Date().toISOString());
+
+      // 代表的な口コミをテキストエリアに自動反映
       if (data.summary?.representativeReviews?.length > 0) {
         const newLines = data.summary.representativeReviews
           .map((r: { text: string; rating: number; pattern: string }) => `「${r.text}」（${r.pattern}・★${r.rating}）`);
@@ -467,17 +492,8 @@ function ClinicEditForm({
           setReviews(existing ? `${existing}\n${uniqueNew.join("\n")}` : uniqueNew.join("\n"));
         }
       }
-
-      const dupMsg = data.duplicateCount > 0 ? `（${data.duplicateCount}件は既存と重複のためスキップ）` : "";
-      setReviewFetchResult({
-        success: true,
-        message: `口コミ${data.reviewCount}件を取得、${data.newCount}件を新規保存しました${dupMsg}（平均★${data.avgRating?.toFixed(1)}）`,
-        summary: data.summary,
-        allReviews: data.allReviews,
-      });
-      setShowAllReviews(false);
     } catch (e) {
-      setReviewFetchResult({ success: false, message: e instanceof Error ? e.message : "取得に失敗しました" });
+      setReviewError(e instanceof Error ? e.message : "取得に失敗しました");
     } finally {
       setFetchingReviews(false);
     }
@@ -902,85 +918,81 @@ function ClinicEditForm({
         <p className="text-xs text-gray-400 mt-0.5">手動入力した口コミは、記事生成時の補足として使われます</p>
       </div>
 
-      {/* Google口コミ自動取得 */}
-      <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xl">🔍</span>
-          <h3 className="text-sm font-bold text-gray-800">Google口コミの自動取得（おすすめ）</h3>
-        </div>
-        <p className="text-xs text-gray-600 mb-3 leading-relaxed">
-          Googleマップに投稿されている口コミを自動で取得し、AIで要約します。<br />
-          記事生成時、症状キーワードに合わせて関連する口コミだけが自動でプロンプトに反映されます。
-        </p>
-        <div className="flex items-center gap-3 mb-3">
-          <label className="text-xs font-medium text-gray-600">取得件数：</label>
-          <select
-            value={reviewMaxCount}
-            onChange={(e) => setReviewMaxCount(parseInt(e.target.value))}
-            className="px-2 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={fetchingReviews}
-          >
-            <option value={30}>30件（標準）</option>
-            <option value={50}>50件</option>
-            <option value={100}>100件（大量）</option>
-          </select>
+      {/* Google口コミ（マップ風自動表示） */}
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
+        <div className="bg-white px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📝</span>
+            <h3 className="text-sm font-bold text-gray-800">Google口コミ</h3>
+            {savedReviews.length > 0 && (
+              <span className="text-xs text-gray-400">
+                {savedReviews.length}件
+                {reviewsUpdatedAt && ` / ${new Date(reviewsUpdatedAt).toLocaleDateString("ja-JP")}更新`}
+              </span>
+            )}
+          </div>
           <button
             onClick={handleFetchReviews}
             disabled={fetchingReviews}
-            className="ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-xs font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="px-3 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 disabled:opacity-50 transition-all"
           >
-            {fetchingReviews ? "取得中..." : "Google口コミを取得"}
+            {fetchingReviews ? "取得中..." : savedReviews.length > 0 ? "更新" : "Googleから取得"}
           </button>
         </div>
-        {reviewFetchResult && (
-          <div className={`text-xs p-2 rounded ${reviewFetchResult.success ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
-            {reviewFetchResult.message}
-          </div>
+
+        {reviewError && (
+          <div className="px-4 py-2 bg-red-50 text-red-600 text-xs border-b border-red-100">{reviewError}</div>
         )}
-        {reviewFetchResult?.summary && (
-          <div className="mt-3 space-y-2">
-            <div className="bg-white border border-gray-200 rounded-lg p-3">
-              <h4 className="text-xs font-bold text-gray-700 mb-1">全体の傾向</h4>
-              <p className="text-xs text-gray-600 leading-relaxed">{reviewFetchResult.summary.summaryOverall}</p>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-lg p-3">
-              <h4 className="text-xs font-bold text-gray-700 mb-1">症状別タグ</h4>
-              <div className="flex flex-wrap gap-1">
-                {Object.keys(reviewFetchResult.summary.symptomTags).map((tag) => (
-                  <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs">{tag}（{reviewFetchResult.summary!.symptomTags[tag].length}件）</span>
-                ))}
-              </div>
-            </div>
+
+        {reviewLoading ? (
+          <div className="px-4 py-6 text-center text-xs text-gray-400">読み込み中...</div>
+        ) : savedReviews.length === 0 && !fetchingReviews ? (
+          <div className="px-4 py-6 text-center">
+            <p className="text-xs text-gray-400 mb-2">口コミがまだ取得されていません</p>
+            <p className="text-xs text-gray-400">上の「Googleから取得」ボタンで自動取得できます</p>
           </div>
-        )}
-        {reviewFetchResult?.allReviews && reviewFetchResult.allReviews.length > 0 && (
-          <div className="mt-3">
-            <button
-              onClick={() => setShowAllReviews(!showAllReviews)}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-            >
-              {showAllReviews ? "▼ 取得した口コミを閉じる" : `▶ 取得した口コミを見る（${reviewFetchResult.allReviews.length}件）`}
-            </button>
-            {showAllReviews && (
-              <div className="mt-2 max-h-64 overflow-y-auto space-y-1.5">
-                {reviewFetchResult.allReviews.map((r, i) => (
-                  <div key={i} className="bg-white border border-gray-200 rounded-lg p-2 text-xs">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-yellow-500">{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</span>
-                      <span className="text-gray-500">{r.author}</span>
-                      {r.date && <span className="text-gray-400">{r.date}</span>}
-                    </div>
-                    <p className="text-gray-700 leading-relaxed">{r.text}</p>
-                  </div>
-                ))}
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {/* 要約 */}
+            {savedSummary && (
+              <div className="px-4 py-3 bg-gray-50">
+                <p className="text-xs text-gray-600 leading-relaxed mb-2">{savedSummary.summaryOverall}</p>
+                <div className="flex flex-wrap gap-1">
+                  {Object.keys(savedSummary.symptomTags).map((tag) => (
+                    <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px]">{tag}（{savedSummary.symptomTags[tag].length}）</span>
+                  ))}
+                </div>
               </div>
             )}
+
+            {/* 口コミ一覧 */}
+            <div className="px-4 py-2">
+              <button
+                onClick={() => setShowAllReviews(!showAllReviews)}
+                className="w-full text-left text-xs text-gray-500 hover:text-gray-700 py-1"
+              >
+                {showAllReviews ? "▼ 口コミを閉じる" : `▶ 口コミ一覧を表示（${savedReviews.length}件）`}
+              </button>
+              {showAllReviews && (
+                <div className="mt-2 max-h-72 overflow-y-auto space-y-2 pb-2">
+                  {savedReviews.map((r, i) => (
+                    <div key={i} className="bg-gray-50 rounded-lg p-2.5 text-xs">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-yellow-500 text-[11px]">{"★".repeat(r.rating)}{"☆".repeat(Math.max(0, 5 - r.rating))}</span>
+                        <span className="text-gray-500 font-medium">{r.author}</span>
+                        {r.date && <span className="text-gray-400 ml-auto">{r.date}</span>}
+                      </div>
+                      <p className="text-gray-700 leading-relaxed">{r.text}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
-        <p className="text-xs text-gray-400 mt-2">
-          ※ 月4回まで取得可能。利用料の負担はありません。<br />
-          ※ 取得した口コミはAIで要約され、症状別にタグ付けされます。
-        </p>
+        <div className="px-4 py-2 bg-gray-50 border-t border-gray-100">
+          <p className="text-[10px] text-gray-400">月4回まで更新可能 / 記事生成時に症状に合った口コミが自動で反映されます</p>
+        </div>
       </div>
 
       {/* 症状キーワード */}

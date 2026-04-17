@@ -169,6 +169,64 @@ async function resolveAnthropicKey(userId?: string): Promise<string> {
   return "";
 }
 
+/**
+ * GET: DB保存済みの口コミ・要約を取得（ページ表示時の自動読み込み用）
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
+    }
+
+    const clinicId = request.nextUrl.searchParams.get("clinicId");
+    if (!clinicId) {
+      return NextResponse.json({ error: "clinicIdは必須です" }, { status: 400 });
+    }
+
+    // 口コミ一覧
+    const { data: reviews } = await supabase
+      .from("meo_clinic_reviews")
+      .select("author_name, rating, review_text, review_date")
+      .eq("user_id", user.id)
+      .eq("clinic_id", clinicId)
+      .order("rating", { ascending: false });
+
+    // 要約
+    const { data: summaryData } = await supabase
+      .from("meo_review_summaries")
+      .select("summary_overall, symptom_tags, representative_reviews, total_count, avg_rating, updated_at")
+      .eq("user_id", user.id)
+      .eq("clinic_id", clinicId)
+      .single();
+
+    const allReviews = (reviews || []).map((r) => ({
+      author: r.author_name || "匿名",
+      rating: r.rating || 0,
+      text: r.review_text || "",
+      date: r.review_date || "",
+    }));
+
+    const summary = summaryData ? {
+      summaryOverall: summaryData.summary_overall || "",
+      symptomTags: (summaryData.symptom_tags || {}) as Record<string, string[]>,
+      representativeReviews: (summaryData.representative_reviews || []) as { text: string; rating: number; pattern: string }[],
+    } : null;
+
+    return NextResponse.json({
+      reviewCount: allReviews.length,
+      avgRating: summaryData?.avg_rating || 0,
+      updatedAt: summaryData?.updated_at || null,
+      summary,
+      allReviews,
+    });
+  } catch (e) {
+    const errorMsg = e instanceof Error ? e.message : "不明なエラー";
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -243,8 +301,9 @@ export async function POST(request: NextRequest) {
     }
     const duplicateCount = reviews.filter((r) => r.snippet && r.snippet.length > 10).length - newReviewRows.length;
 
-    // 4. AIで要約
-    const summary = await summarizeReviews(reviews, anthropicKey);
+    // 4. AIで要約（タイムアウト防止: 上位50件に制限）
+    const reviewsForAI = reviews.slice(0, 50);
+    const summary = await summarizeReviews(reviewsForAI, anthropicKey);
 
     // 5. 要約をDBに保存（upsert）
     const avgRating = reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length;
