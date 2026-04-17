@@ -425,7 +425,13 @@ function ClinicEditForm({
   // Google口コミ自動取得
   const [reviewMaxCount, setReviewMaxCount] = useState(30);
   const [fetchingReviews, setFetchingReviews] = useState(false);
-  const [reviewFetchResult, setReviewFetchResult] = useState<{ success: boolean; message: string; summary?: { summaryOverall: string; symptomTags: Record<string, string[]>; representativeReviews: { text: string; rating: number; pattern: string }[] } } | null>(null);
+  const [reviewFetchResult, setReviewFetchResult] = useState<{
+    success: boolean;
+    message: string;
+    summary?: { summaryOverall: string; symptomTags: Record<string, string[]>; representativeReviews: { text: string; rating: number; pattern: string }[] };
+    allReviews?: { author: string; rating: number; text: string; date: string }[];
+  } | null>(null);
+  const [showAllReviews, setShowAllReviews] = useState(false);
 
   async function handleFetchReviews() {
     if (!name || !area) {
@@ -450,19 +456,26 @@ function ClinicEditForm({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "取得に失敗しました");
 
-      // 代表的な口コミをテキストエリアに自動反映
+      // 代表的な口コミをテキストエリアに自動反映（既存の手動入力は保持して末尾に追加）
       if (data.summary?.representativeReviews?.length > 0) {
-        const reviewLines = data.summary.representativeReviews
-          .map((r: { text: string; rating: number; pattern: string }) => `「${r.text}」（${r.pattern}・★${r.rating}）`)
-          .join("\n");
-        setReviews(reviewLines);
+        const newLines = data.summary.representativeReviews
+          .map((r: { text: string; rating: number; pattern: string }) => `「${r.text}」（${r.pattern}・★${r.rating}）`);
+        const existing = reviews.trim();
+        const existingSet = new Set(existing.split("\n").map((l: string) => l.trim()).filter(Boolean));
+        const uniqueNew = newLines.filter((line: string) => !existingSet.has(line));
+        if (uniqueNew.length > 0) {
+          setReviews(existing ? `${existing}\n${uniqueNew.join("\n")}` : uniqueNew.join("\n"));
+        }
       }
 
+      const dupMsg = data.duplicateCount > 0 ? `（${data.duplicateCount}件は既存と重複のためスキップ）` : "";
       setReviewFetchResult({
         success: true,
-        message: `口コミ${data.reviewCount}件を取得し、AIで要約しました（平均★${data.avgRating?.toFixed(1)}）`,
+        message: `口コミ${data.reviewCount}件を取得、${data.newCount}件を新規保存しました${dupMsg}（平均★${data.avgRating?.toFixed(1)}）`,
         summary: data.summary,
+        allReviews: data.allReviews,
       });
+      setShowAllReviews(false);
     } catch (e) {
       setReviewFetchResult({ success: false, message: e instanceof Error ? e.message : "取得に失敗しました" });
     } finally {
@@ -938,6 +951,30 @@ function ClinicEditForm({
                 ))}
               </div>
             </div>
+          </div>
+        )}
+        {reviewFetchResult?.allReviews && reviewFetchResult.allReviews.length > 0 && (
+          <div className="mt-3">
+            <button
+              onClick={() => setShowAllReviews(!showAllReviews)}
+              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+            >
+              {showAllReviews ? "▼ 取得した口コミを閉じる" : `▶ 取得した口コミを見る（${reviewFetchResult.allReviews.length}件）`}
+            </button>
+            {showAllReviews && (
+              <div className="mt-2 max-h-64 overflow-y-auto space-y-1.5">
+                {reviewFetchResult.allReviews.map((r, i) => (
+                  <div key={i} className="bg-white border border-gray-200 rounded-lg p-2 text-xs">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-yellow-500">{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</span>
+                      <span className="text-gray-500">{r.author}</span>
+                      {r.date && <span className="text-gray-400">{r.date}</span>}
+                    </div>
+                    <p className="text-gray-700 leading-relaxed">{r.text}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
         <p className="text-xs text-gray-400 mt-2">

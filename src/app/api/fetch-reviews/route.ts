@@ -218,10 +218,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "口コミが取得できませんでした" }, { status: 404 });
     }
 
-    // 3. DBに既存口コミを削除して新規保存
-    await supabase.from("meo_clinic_reviews").delete().eq("user_id", user.id).eq("clinic_id", clinicId);
-    const reviewRows = reviews
+    // 3. 既存口コミを取得して重複チェック
+    const { data: existingReviews } = await supabase
+      .from("meo_clinic_reviews")
+      .select("review_text")
+      .eq("user_id", user.id)
+      .eq("clinic_id", clinicId);
+    const existingTexts = new Set((existingReviews || []).map((r) => r.review_text));
+
+    const newReviewRows = reviews
       .filter((r) => r.snippet && r.snippet.length > 10)
+      .filter((r) => !existingTexts.has(r.snippet || "")) // 重複排除
       .map((r) => ({
         user_id: user.id,
         clinic_id: clinicId,
@@ -231,9 +238,10 @@ export async function POST(request: NextRequest) {
         review_date: r.date || null,
         source: "google",
       }));
-    if (reviewRows.length > 0) {
-      await supabase.from("meo_clinic_reviews").insert(reviewRows);
+    if (newReviewRows.length > 0) {
+      await supabase.from("meo_clinic_reviews").insert(newReviewRows);
     }
+    const duplicateCount = reviews.filter((r) => r.snippet && r.snippet.length > 10).length - newReviewRows.length;
 
     // 4. AIで要約
     const summary = await summarizeReviews(reviews, anthropicKey);
@@ -258,11 +266,24 @@ export async function POST(request: NextRequest) {
       fetch_count: reviews.length,
     });
 
+    // 全口コミ一覧（UI表示用）
+    const allReviewsList = reviews
+      .filter((r) => r.snippet && r.snippet.length > 10)
+      .map((r) => ({
+        author: r.user?.name || "匿名",
+        rating: r.rating || 0,
+        text: r.snippet || "",
+        date: r.date || "",
+      }));
+
     return NextResponse.json({
       success: true,
       reviewCount: reviews.length,
+      newCount: newReviewRows.length,
+      duplicateCount,
       avgRating,
       summary,
+      allReviews: allReviewsList,
     });
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : "不明なエラー";
