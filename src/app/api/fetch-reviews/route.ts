@@ -123,7 +123,20 @@ ${reviewsText}
   const text = message.content[0].type === "text" ? message.content[0].text : "";
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("AI summarization failed: invalid JSON response");
-  return JSON.parse(jsonMatch[0]);
+
+  // JSONの修正: トレーリングカンマ除去、不正な文字の修正
+  let jsonStr = jsonMatch[0];
+  jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1"); // trailing commas
+  jsonStr = jsonStr.replace(/[\x00-\x1F\x7F]/g, (ch) => ch === "\n" || ch === "\r" || ch === "\t" ? ch : ""); // control chars
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    // 最後の手段: 各行を修正してリトライ
+    jsonStr = jsonStr.replace(/"\s*\n\s*"/g, '", "'); // 改行で分断された文字列を修正
+    jsonStr = jsonStr.replace(/,\s*,/g, ","); // ダブルカンマ除去
+    return JSON.parse(jsonStr);
+  }
 }
 
 // APIキーを取得：環境変数 → DB → の順（generate/route.tsと同じ方式）
@@ -162,13 +175,11 @@ export async function POST(request: NextRequest) {
 
     const serpApiKey = process.env.SERPAPI_KEY;
     if (!serpApiKey) {
-      console.error("SERPAPI_KEY not found in env. Available keys:", Object.keys(process.env).filter(k => k.includes("SERP") || k.includes("API")).join(", "));
-      return NextResponse.json({ error: `システムのAPIキーが設定されていません（SERP: ${!!serpApiKey}）。管理者に連絡してください。` }, { status: 500 });
+      return NextResponse.json({ error: "システムのAPIキーが設定されていません。管理者に連絡してください。" }, { status: 500 });
     }
     const anthropicKey = await resolveAnthropicKey(user.id);
     if (!anthropicKey) {
-      console.error("Anthropic key not found. env:", !!process.env.ANTHROPIC_API_KEY);
-      return NextResponse.json({ error: `AIのAPIキーが設定されていません（ENV: ${!!process.env.ANTHROPIC_API_KEY}）。管理者に連絡してください。` }, { status: 500 });
+      return NextResponse.json({ error: "AIのAPIキーが設定されていません。管理者に連絡してください。" }, { status: 500 });
     }
 
     // 月間取得回数チェック（4回まで）
