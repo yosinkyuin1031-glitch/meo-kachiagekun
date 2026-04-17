@@ -432,11 +432,7 @@ function ClinicEditForm({
       setReviewFetchResult({ success: false, message: "院名・エリアを先に保存してください" });
       return;
     }
-    if (!anthropicKey) {
-      setReviewFetchResult({ success: false, message: "Anthropic APIキーが設定されていません" });
-      return;
-    }
-    if (!confirm(`Google口コミを最大${reviewMaxCount}件取得します。\nSerpApiとAnthropic APIの利用料が発生します（合計約20〜35円）。\n月4回まで取得可能です。\n実行しますか？`)) return;
+    if (!confirm(`Google口コミを最大${reviewMaxCount}件取得します。\n月4回まで取得可能です。\n実行しますか？`)) return;
 
     setFetchingReviews(true);
     setReviewFetchResult(null);
@@ -449,7 +445,6 @@ function ClinicEditForm({
           businessName: name,
           area,
           maxCount: reviewMaxCount,
-          anthropicKey,
         }),
       });
       const data = await res.json();
@@ -920,7 +915,7 @@ function ClinicEditForm({
           </div>
         )}
         <p className="text-xs text-gray-400 mt-2">
-          ※ 月4回まで取得可能。1回の取得で約20〜35円のAPI利用料が発生します。<br />
+          ※ 月4回まで取得可能。利用料の負担はありません。<br />
           ※ 取得した口コミはAIで要約され、症状別にタグ付けされます。
         </p>
       </div>

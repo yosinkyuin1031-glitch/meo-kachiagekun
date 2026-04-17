@@ -134,20 +134,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
 
-    const { clinicId, businessName, area, maxCount, anthropicKey } = await request.json();
+    const { clinicId, businessName, area, maxCount } = await request.json();
 
     if (!clinicId || !businessName || !area) {
       return NextResponse.json({ error: "院ID・店舗名・エリアは必須です" }, { status: 400 });
-    }
-    if (!anthropicKey) {
-      return NextResponse.json({ error: "Anthropic APIキーが設定されていません" }, { status: 400 });
     }
 
     const limit = Math.min(Math.max(parseInt(maxCount) || 30, 10), 100);
 
     const serpApiKey = process.env.SERPAPI_KEY;
-    if (!serpApiKey) {
-      return NextResponse.json({ error: "システムのAPIキーが設定されていません" }, { status: 500 });
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    if (!serpApiKey || !anthropicKey) {
+      return NextResponse.json({ error: "システムのAPIキーが設定されていません。管理者に連絡してください。" }, { status: 500 });
     }
 
     // 月間取得回数チェック（4回まで）
