@@ -24,10 +24,14 @@ export default function Error({
         <h1 className="text-xl font-bold text-gray-800 mb-2">
           予期しないエラーが発生しました
         </h1>
-        <p className="text-sm text-gray-500 mb-6">
+        <p className="text-sm text-gray-500 mb-4">
           ページの読み込み中にエラーが発生しました。もう一度お試しください。
           問題が続く場合は、しばらく時間をおいてからアクセスしてください。
         </p>
+        <pre className="text-xs text-left bg-gray-100 p-3 rounded-lg mb-4 overflow-auto max-h-32 text-red-600">
+          {error?.message || "不明なエラー"}
+          {error?.stack ? `\n${error.stack.split("\n").slice(0, 3).join("\n")}` : ""}
+        </pre>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <button
             onClick={reset}
