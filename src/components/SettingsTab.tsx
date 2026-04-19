@@ -909,21 +909,12 @@ function ClinicEditForm({
           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
       </div>
 
-      {/* 口コミ */}
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">代表的な口コミ・患者の声</label>
-        <textarea value={reviews} onChange={(e) => setReviews(e.target.value)} rows={4}
-          placeholder={"例：\n「どこに行っても変わらなかった腰痛が3回で楽になりました」（60代女性）\n「丁寧な説明で安心して施術を受けられました」（40代男性）\n「長年の頭痛が嘘のように改善」（30代女性）"}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
-        <p className="text-xs text-gray-400 mt-0.5">手動入力した口コミは、記事生成時の補足として使われます</p>
-      </div>
-
-      {/* Google口コミ（マップ風自動表示） */}
+      {/* 口コミ・患者の声（統合セクション） */}
       <div className="border border-gray-200 rounded-xl overflow-hidden">
         <div className="bg-white px-4 py-3 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-lg">📝</span>
-            <h3 className="text-sm font-bold text-gray-800">Google口コミ</h3>
+            <span className="text-lg">⭐</span>
+            <h3 className="text-sm font-bold text-gray-800">口コミ・患者の声</h3>
             {savedReviews.length > 0 && (
               <span className="text-xs text-gray-400">
                 {savedReviews.length}件
@@ -936,7 +927,7 @@ function ClinicEditForm({
             disabled={fetchingReviews}
             className="px-3 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 disabled:opacity-50 transition-all"
           >
-            {fetchingReviews ? "取得中..." : savedReviews.length > 0 ? "更新" : "Googleから取得"}
+            {fetchingReviews ? "取得中..." : savedReviews.length > 0 ? "Googleから更新" : "Googleから取得"}
           </button>
         </div>
 
@@ -944,16 +935,11 @@ function ClinicEditForm({
           <div className="px-4 py-2 bg-red-50 text-red-600 text-xs border-b border-red-100">{reviewError}</div>
         )}
 
+        {/* Google口コミ要約 */}
         {reviewLoading ? (
-          <div className="px-4 py-6 text-center text-xs text-gray-400">読み込み中...</div>
-        ) : savedReviews.length === 0 && !fetchingReviews ? (
-          <div className="px-4 py-6 text-center">
-            <p className="text-xs text-gray-400 mb-2">口コミがまだ取得されていません</p>
-            <p className="text-xs text-gray-400">上の「Googleから取得」ボタンで自動取得できます</p>
-          </div>
-        ) : (
+          <div className="px-4 py-4 text-center text-xs text-gray-400">読み込み中...</div>
+        ) : savedReviews.length > 0 ? (
           <div className="divide-y divide-gray-50">
-            {/* 要約 */}
             {savedSummary && (
               <div className="px-4 py-3 bg-gray-50">
                 <p className="text-xs text-gray-600 leading-relaxed mb-2">{savedSummary.summaryOverall}</p>
@@ -991,9 +977,22 @@ function ClinicEditForm({
               )}
             </div>
           </div>
-        )}
+        ) : !fetchingReviews ? (
+          <div className="px-4 py-4 text-center">
+            <p className="text-xs text-gray-400">右上の「Googleから取得」で口コミを自動取得できます</p>
+          </div>
+        ) : null}
+
+        {/* 手動追加エリア */}
+        <div className="px-4 py-3 border-t border-gray-100">
+          <label className="block text-[11px] font-medium text-gray-500 mb-1">手動で追加（エキテン・ホットペッパー等）</label>
+          <textarea value={reviews} onChange={(e) => setReviews(e.target.value)} rows={3}
+            placeholder={"Google以外の口コミや患者の声を追加できます\n例：「どこに行っても変わらなかった腰痛が3回で楽になりました」（60代女性）"}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+        </div>
+
         <div className="px-4 py-2 bg-gray-50 border-t border-gray-100">
-          <p className="text-[10px] text-gray-400">月4回まで更新可能 / 記事生成時に症状に合った口コミが自動で反映されます</p>
+          <p className="text-[10px] text-gray-400">Google口コミは月4回まで更新可能 / 記事生成時に症状に合った口コミが自動で反映されます</p>
         </div>
       </div>
 
