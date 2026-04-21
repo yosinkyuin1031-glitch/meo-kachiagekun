@@ -18,6 +18,32 @@ interface SerpPlaceResult {
 }
 
 /**
+ * GoogleマップのURLから data_id（0x...:0x...形式）を抽出
+ * 例: https://www.google.com/maps/place/.../@..../data=!...!1s0xabc:0xdef!8m2...
+ * 例: https://maps.app.goo.gl/xxxxx → リダイレクト後のURLから抽出
+ */
+async function extractDataIdFromUrl(url: string): Promise<string | null> {
+  if (!url) return null;
+  try {
+    let finalUrl = url.trim();
+    // 短縮URLの場合はリダイレクト先を追う
+    if (/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl)/.test(finalUrl)) {
+      const resp = await fetch(finalUrl, { redirect: "follow" });
+      finalUrl = resp.url || finalUrl;
+    }
+    // data=!...!1s<DATA_ID> パターン
+    const m1 = finalUrl.match(/!1s(0x[0-9a-fA-F]+:0x[0-9a-fA-F]+)/);
+    if (m1) return m1[1];
+    // ftid=<DATA_ID> パターン（検索URL）
+    const m2 = finalUrl.match(/[?&]ftid=(0x[0-9a-fA-F]+:0x[0-9a-fA-F]+)/);
+    if (m2) return m2[1];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * SerpApi Google Maps検索でplace_idを取得
  */
 async function findPlaceId(query: string, apiKey: string): Promise<string | null> {
@@ -235,7 +261,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
 
-    const { clinicId, businessName, area, maxCount } = await request.json();
+    const { clinicId, businessName, area, maxCount, googleMapUrl, nearestStation } = await request.json();
 
     if (!clinicId || !businessName || !area) {
       return NextResponse.json({ error: "院ID・店舗名・エリアは必須です" }, { status: 400 });
@@ -265,9 +291,20 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. place_id取得
-    const dataId = await findPlaceId(`${area} ${businessName}`, serpApiKey);
+    //    優先度: ①GoogleマップURL（確実に一致）→ ②住所+店舗名検索
+    let dataId: string | null = null;
+    if (googleMapUrl) {
+      dataId = await extractDataIdFromUrl(googleMapUrl);
+    }
     if (!dataId) {
-      return NextResponse.json({ error: "Google Mapsで該当店舗が見つかりませんでした" }, { status: 404 });
+      // 最寄り駅も含めて絞り込み精度を上げる
+      const queryParts = [area, nearestStation, businessName].filter(Boolean);
+      dataId = await findPlaceId(queryParts.join(" "), serpApiKey);
+    }
+    if (!dataId) {
+      return NextResponse.json({
+        error: "Googleマップで該当店舗が見つかりませんでした。設定の「各種URL」→「Googleマップ口コミURL」に正確なURLを貼り付けるとより確実に取得できます。",
+      }, { status: 404 });
     }
 
     // 2. 口コミ取得

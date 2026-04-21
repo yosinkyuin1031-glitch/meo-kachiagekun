@@ -471,6 +471,8 @@ function ClinicEditForm({
           clinicId: clinic?.id,
           businessName: name,
           area,
+          nearestStation,
+          googleMapUrl,
           maxCount: 50,
         }),
       });
