@@ -13,7 +13,7 @@ export default function PrivacyPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 space-y-8 text-sm text-gray-700 leading-relaxed">
-          <p className="text-xs text-gray-400">最終更新日: 2026年3月26日</p>
+          <p className="text-xs text-gray-400">制定日: 2026年3月26日 / 最終改定日: 2026年4月22日</p>
 
           <section>
             <h2 className="text-lg font-bold text-gray-800 mb-3">1. はじめに</h2>
@@ -78,10 +78,19 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-bold text-gray-800 mb-3">5. データの保管</h2>
+            <h2 className="text-lg font-bold text-gray-800 mb-3">5. 安全管理措置</h2>
+            <p>運営者は、個人情報の漏洩、滅失、毀損を防止するため、以下の安全管理措置を講じています。</p>
+            <div className="space-y-2 mt-3 text-xs text-gray-600">
+              <p><strong className="text-gray-700">技術的安全管理措置：</strong>SSL/TLS通信暗号化、Supabase RLSによる利用者ごとのデータ分離、パスワードのbcryptハッシュ化、Google OAuthトークンの暗号化保存、RBAC、ログイン失敗回数制限、アクセスログの記録</p>
+              <p><strong className="text-gray-700">物理的・組織的安全管理措置：</strong>データは<strong>東京リージョン（日本国内）</strong>のデータセンターに保管、Supabaseによる自動バックアップ、アクセス権限の必要最小限化、定期的なセキュリティレビュー</p>
+              <p><strong className="text-gray-700">人的安全管理措置：</strong>従業者教育、守秘義務の徹底</p>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-bold text-gray-800 mb-3">5-2. 漏洩等発生時の対応</h2>
             <p>
-              お客様のデータは、Supabase（AWS上のインフラ）に暗号化して保存されています。
-              データの保管にあたっては、不正アクセスや情報漏洩を防ぐために適切なセキュリティ対策を講じています。
+              個人情報の漏洩等が発生した場合、運営者は個人情報保護委員会への報告および影響を受ける利用者への通知を、<strong>事故認知後速やかに（原則72時間以内を目安に）</strong>行います。
             </p>
           </section>
 

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { ClinicProfile, AppSettings, BusinessProfile, GeneratedContent, SearchConsoleSettings, GbpMaterialImage, ChecklistItem } from "./types";
+import { ClinicProfile, AppSettings, BusinessProfile, GeneratedContent, SearchConsoleSettings, ChecklistItem } from "./types";
 import { RankingHistory } from "./ranking-types";
 
 // ─── ヘルパー ────────────────────────────────────
@@ -502,84 +502,6 @@ export async function clearSearchConsoleSettings(): Promise<void> {
     .from("meo_search_console_settings")
     .delete()
     .eq("user_id", userId);
-}
-
-// ─── GBP素材画像ライブラリ ──────────────────────
-export async function getGbpImages(): Promise<GbpMaterialImage[]> {
-  try {
-    const userId = await getUserId();
-    const { data } = await supabase()
-      .from("meo_gbp_images")
-      .select("*")
-      .eq("user_id", userId)
-      .order("added_at", { ascending: false });
-
-    if (!data) return [];
-
-    // 各画像のsigned URLを取得
-    const images: GbpMaterialImage[] = [];
-    for (const row of data) {
-      let dataUrl = "";
-      if (row.storage_path) {
-        const { data: urlData } = await supabase()
-          .storage.from("meo-gbp-images")
-          .createSignedUrl(row.storage_path, 3600);
-        dataUrl = urlData?.signedUrl || "";
-      }
-      images.push({
-        id: row.id,
-        category: row.category as GbpMaterialImage["category"],
-        dataUrl,
-        name: row.name || "",
-        addedAt: row.added_at,
-      });
-    }
-    return images;
-  } catch {
-    return [];
-  }
-}
-
-export async function saveGbpImage(image: GbpMaterialImage): Promise<void> {
-  const userId = await getUserId();
-
-  // dataUrlからBlobに変換してStorageにアップロード
-  let storagePath = "";
-  if (image.dataUrl && image.dataUrl.startsWith("data:")) {
-    const response = await fetch(image.dataUrl);
-    const blob = await response.blob();
-    storagePath = `${userId}/${image.id}.jpg`;
-    await supabase()
-      .storage.from("meo-gbp-images")
-      .upload(storagePath, blob, { contentType: "image/jpeg", upsert: true });
-  }
-
-  await supabase().from("meo_gbp_images").insert({
-    id: image.id,
-    user_id: userId,
-    category: image.category,
-    storage_path: storagePath,
-    name: image.name,
-    added_at: image.addedAt,
-  });
-}
-
-export async function deleteGbpImage(id: string): Promise<void> {
-  const userId = await getUserId();
-
-  // Storage上のファイルも削除
-  const { data } = await supabase()
-    .from("meo_gbp_images")
-    .select("storage_path")
-    .eq("id", id)
-    .eq("user_id", userId)
-    .single();
-
-  if (data?.storage_path) {
-    await supabase().storage.from("meo-gbp-images").remove([data.storage_path]);
-  }
-
-  await supabase().from("meo_gbp_images").delete().eq("id", id).eq("user_id", userId);
 }
 
 // ─── AI学習コンテキスト（蓄積データ活用）──────────

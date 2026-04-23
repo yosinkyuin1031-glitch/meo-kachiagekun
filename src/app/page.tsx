@@ -19,7 +19,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import BulkGenerator from "@/components/BulkGenerator";
 import ContentGenerator from "@/components/ContentGenerator";
-import GbpImageGenerator from "@/components/GbpImageGenerator";
 import SettingsTab from "@/components/SettingsTab";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import RankingChecker from "@/components/RankingChecker";
@@ -39,7 +38,7 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: "settings", label: "設定", icon: "⚙️" },
 ];
 
-type ContentSubTab = "bulk" | "faq" | "blog" | "gbp" | "image" | "note" | "review";
+type ContentSubTab = "bulk" | "faq" | "blog" | "gbp" | "note" | "review";
 
 const CONTENT_SUB_TABS: { key: ContentSubTab; label: string; icon: string }[] = [
   { key: "bulk", label: "一括生成", icon: "⚡" },
@@ -47,7 +46,6 @@ const CONTENT_SUB_TABS: { key: ContentSubTab; label: string; icon: string }[] = 
   { key: "blog", label: "ブログ記事", icon: "📄" },
   { key: "gbp", label: "GBP投稿", icon: "📍" },
   { key: "review", label: "口コミ返信", icon: "⭐" },
-  { key: "image", label: "画像生成", icon: "🖼️" },
   { key: "note", label: "note記事", icon: "📝" },
 ];
 
@@ -413,8 +411,7 @@ export default function Home() {
             {contentSubTab === "faq" && <ContentGenerator profile={profile} type="faq" clinicId={activeClinicId} />}
             {contentSubTab === "blog" && <ContentGenerator profile={profile} type="blog" clinicId={activeClinicId} />}
             {contentSubTab === "gbp" && <ContentGenerator profile={profile} type="gbp" clinicId={activeClinicId} />}
-            {contentSubTab === "review" && <ReviewReplyGenerator profile={profile} />}
-            {contentSubTab === "image" && <GbpImageGenerator profile={profile} />}
+            {contentSubTab === "review" && <ReviewReplyGenerator profile={profile} clinicId={activeClinicId} />}
             {contentSubTab === "note" && <ContentGenerator profile={profile} type="note" clinicId={activeClinicId} />}
           </div>
         )}

@@ -320,7 +320,6 @@ export default function PlanTab() {
               { icon: "📊", title: "アナリティクス", desc: "アクセス数・表示回数などの分析ダッシュボード" },
               { icon: "✅", title: "施策チェックリスト", desc: "MEO対策の進捗を管理するチェックリスト" },
               { icon: "⭐", title: "口コミ返信AI", desc: "Googleの口コミに対するAI返信文を生成" },
-              { icon: "🖼️", title: "GBP画像生成", desc: "Googleビジネスプロフィール用の画像を生成" },
             ].map((feature) => (
               <div key={feature.title} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50">
                 <span className="text-xl flex-shrink-0 mt-0.5">{feature.icon}</span>

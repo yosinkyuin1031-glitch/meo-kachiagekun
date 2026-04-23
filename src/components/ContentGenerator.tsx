@@ -179,7 +179,7 @@ export default function ContentGenerator({ profile, type, clinicId }: Props) {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: seoPromptText, apiKey: profile.anthropicKey }),
+        body: JSON.stringify({ prompt: seoPromptText, apiKey: profile.anthropicKey, type: "blog-seo" }),
         signal: seoController.signal,
       });
       clearTimeout(seoTimeoutId);
@@ -208,10 +208,6 @@ export default function ContentGenerator({ profile, type, clinicId }: Props) {
       setError("テーマを入力してください");
       return;
     }
-    if (!profile.anthropicKey) {
-      setError("APIキーが設定されていません。設定画面で入力してください。");
-      return;
-    }
 
     setLoading(true);
     setError("");
@@ -231,12 +227,15 @@ export default function ContentGenerator({ profile, type, clinicId }: Props) {
     try {
       const prompt = await buildPrompt();
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // AI生成は60秒タイムアウト
+      // FAQ/Blog/noteは長文生成のためタイムアウトを長めに
+      const longTypes = ["faq", "blog", "note"];
+      const timeoutMs = longTypes.includes(type) ? 180000 : 90000;
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, apiKey: profile.anthropicKey }),
+        body: JSON.stringify({ prompt, apiKey: profile.anthropicKey, type }),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);

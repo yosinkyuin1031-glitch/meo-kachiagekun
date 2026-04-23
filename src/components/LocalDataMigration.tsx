@@ -11,7 +11,6 @@ const LS_KEYS = {
   rankingHistory: "meo_ranking_history",
   serpApiKey: "meo_serpapi_key",
   searchConsole: "meo_search_console",
-  gbpImages: "meo_gbp_images",
   oldProfile: "meo_profile",
   oldChecklist: "meo_checklist",
 };
@@ -156,37 +155,7 @@ export default function LocalDataMigration({ onComplete }: { onComplete: () => v
         }, { onConflict: "user_id" });
       }
 
-      // 8. GBP Images (metadata only, dataUrl too large for DB)
-      setProgress("画像データを移行中...");
-      const gbpImages = getLocalData(LS_KEYS.gbpImages) || [];
-      for (const img of gbpImages) {
-        // Upload dataUrl to Supabase Storage
-        if (img.dataUrl) {
-          const base64 = img.dataUrl.split(",")[1];
-          if (base64) {
-            const mimeMatch = img.dataUrl.match(/data:([^;]+);/);
-            const mime = mimeMatch?.[1] || "image/jpeg";
-            const ext = mime.split("/")[1] || "jpg";
-            const path = `${userId}/${img.id}.${ext}`;
-            const buffer = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-            await supabase.storage.from("meo-gbp-images").upload(path, buffer, {
-              contentType: mime,
-              upsert: true,
-            });
-          }
-        }
-
-        await supabase.from("meo_gbp_images").upsert({
-          id: img.id,
-          user_id: userId,
-          category: img.category || "other",
-          storage_path: `${userId}/${img.id}.jpg`,
-          name: img.name || img.fileName || "",
-          added_at: img.addedAt || img.createdAt,
-        }, { onConflict: "id,user_id" });
-      }
-
-      // 9. Checklists (per-clinic)
+      // 8. Checklists (per-clinic)
       setProgress("チェックリストを移行中...");
       for (const c of clinics) {
         const clKey = `meo_checklist_${c.id}`;

@@ -21,6 +21,7 @@ const MAX_TOKENS_MAP: Record<string, number> = {
   blog: 5000,
   "blog-seo": 1500,
   "structured-data": 4000,
+  "review-reply": 2000,
 };
 
 // APIキーを取得：環境変数 → DB → リクエストの順

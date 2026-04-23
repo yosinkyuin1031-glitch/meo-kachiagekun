@@ -1,4 +1,4 @@
-import { ClinicProfile, AppSettings, BusinessProfile, GeneratedContent, SearchConsoleSettings, GbpMaterialImage, ChecklistItem } from "./types";
+import { ClinicProfile, AppSettings, BusinessProfile, GeneratedContent, SearchConsoleSettings, ChecklistItem } from "./types";
 import { RankingHistory } from "./ranking-types";
 
 const CLINICS_KEY = "meo_clinics";
@@ -220,25 +220,6 @@ export function saveSearchConsoleSettings(settings: SearchConsoleSettings) {
 
 export function clearSearchConsoleSettings() {
   localStorage.removeItem(GSC_KEY);
-}
-
-// ─── GBP素材画像ライブラリ ──────────────────────
-const GBP_IMAGES_KEY = "meo_gbp_images";
-
-export function getGbpImages(): GbpMaterialImage[] {
-  if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(GBP_IMAGES_KEY);
-  return data ? JSON.parse(data) : [];
-}
-
-export function saveGbpImage(image: GbpMaterialImage) {
-  const existing = getGbpImages();
-  localStorage.setItem(GBP_IMAGES_KEY, JSON.stringify([image, ...existing]));
-}
-
-export function deleteGbpImage(id: string) {
-  const existing = getGbpImages().filter((img) => img.id !== id);
-  localStorage.setItem(GBP_IMAGES_KEY, JSON.stringify(existing));
 }
 
 // ─── チェックリスト（院ごと）────────────────────

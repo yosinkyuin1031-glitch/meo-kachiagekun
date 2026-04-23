@@ -131,17 +131,6 @@ export interface SearchConsoleQuery {
   position: number;
 }
 
-// GBP投稿用の素材画像
-export type ImageCategory = "施術風景" | "院内風景" | "スタッフ" | "外観" | "その他";
-
-export interface GbpMaterialImage {
-  id: string;
-  category: ImageCategory;
-  dataUrl: string;       // base64 data URL (リサイズ済み)
-  name: string;
-  addedAt: string;
-}
-
 export interface GenerationFeedback {
   id: string;
   contentId: string;
