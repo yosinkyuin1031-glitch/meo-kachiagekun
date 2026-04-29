@@ -13,12 +13,14 @@ const MODEL_CANDIDATES = [
 ];
 
 // タイプ別のmax_tokens設定
+// 注意: 日本語は1文字あたり約1.5トークン、HTMLタグで+25〜40%のオーバーヘッドが乗る
+// blog: 2500〜4000文字+HTMLタグ → 8000トークン必要（5000だと途中切断）
 const MAX_TOKENS_MAP: Record<string, number> = {
   gbp: 1500,
   faq: 8000,
   "faq-short": 2000,
-  note: 5000,
-  blog: 5000,
+  note: 8000,
+  blog: 8000,
   "blog-seo": 1500,
   "structured-data": 4000,
   "review-reply": 2000,
@@ -55,14 +57,17 @@ async function tryGenerate(
   model: string,
   prompt: string,
   maxTokens: number
-): Promise<string> {
+): Promise<{ text: string; stopReason: string | null }> {
   const message = await client.messages.create({
     model,
     max_tokens: maxTokens,
     messages: [{ role: "user", content: prompt }],
   });
   const content = message.content[0];
-  return content.type === "text" ? content.text : "";
+  return {
+    text: content.type === "text" ? content.text : "",
+    stopReason: message.stop_reason ?? null,
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -91,16 +96,41 @@ export async function POST(request: NextRequest) {
     }
 
     const client = new Anthropic({ apiKey: resolvedKey });
-    const maxTokens = MAX_TOKENS_MAP[type] || 4000;
+    const initialMaxTokens = MAX_TOKENS_MAP[type] || 4000;
+    // 切断検知時のリトライ上限（モデル上限に合わせる）
+    const HARD_MAX_TOKENS = 16000;
 
     // モデルフォールバック
     let lastError: Error | null = null;
     for (const model of MODEL_CANDIDATES) {
       try {
-        console.log(`[generate] Trying model=${model} type=${type} maxTokens=${maxTokens}`);
-        const text = await tryGenerate(client, model, prompt, maxTokens);
-        console.log(`[generate] Success model=${model} type=${type} response_len=${text.length}`);
-        return NextResponse.json({ content: text, type, model });
+        let attemptTokens = initialMaxTokens;
+        console.log(`[generate] Trying model=${model} type=${type} maxTokens=${attemptTokens}`);
+        let { text, stopReason } = await tryGenerate(client, model, prompt, attemptTokens);
+
+        // 切断検知 → 自動リトライ（2倍のトークンで再生成、最大2回まで）
+        let retryCount = 0;
+        while (stopReason === "max_tokens" && attemptTokens < HARD_MAX_TOKENS && retryCount < 2) {
+          retryCount++;
+          const nextTokens = Math.min(attemptTokens * 2, HARD_MAX_TOKENS);
+          console.warn(`[generate] TRUNCATED (type=${type}, maxTokens=${attemptTokens}). Auto-retrying with ${nextTokens} tokens (attempt ${retryCount}/2)`);
+          attemptTokens = nextTokens;
+          const retry = await tryGenerate(client, model, prompt, attemptTokens);
+          text = retry.text;
+          stopReason = retry.stopReason;
+        }
+
+        // リトライしても切断された場合はエラー（切断コンテンツをユーザーに返さない）
+        if (stopReason === "max_tokens") {
+          console.error(`[generate] FATAL: Still truncated after retries (type=${type}, finalMaxTokens=${attemptTokens})`);
+          return NextResponse.json(
+            { error: "生成されたコンテンツが長すぎて完成しませんでした。テーマを少し短く・絞ってから再生成してください。" },
+            { status: 500 }
+          );
+        }
+
+        console.log(`[generate] Success model=${model} type=${type} response_len=${text.length} stop_reason=${stopReason} maxTokens=${attemptTokens}`);
+        return NextResponse.json({ content: text, type, model, stopReason });
       } catch (e) {
         const err = e instanceof Error ? e : new Error(String(e));
         const msg = err.message.toLowerCase();
@@ -135,8 +165,14 @@ export async function POST(request: NextRequest) {
         if (msg.includes("rate_limit") || msg.includes("overloaded") || msg.includes("529")) {
           await new Promise((r) => setTimeout(r, 3000));
           try {
-            const text = await tryGenerate(client, model, prompt, maxTokens);
-            return NextResponse.json({ content: text, type, model });
+            const { text, stopReason } = await tryGenerate(client, model, prompt, initialMaxTokens);
+            if (stopReason === "max_tokens") {
+              return NextResponse.json(
+                { error: "生成されたコンテンツが長すぎて完成しませんでした。テーマを少し短く・絞ってから再生成してください。" },
+                { status: 500 }
+              );
+            }
+            return NextResponse.json({ content: text, type, model, stopReason });
           } catch {
             lastError = err;
             continue;
